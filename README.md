@@ -1,0 +1,108 @@
+# omniclicker
+
+A native Linux autoclicker with support for X11 and modern Wayland desktops.
+
+omniclicker aims to provide a simple, clean, and intuitive autoclicking experience while supporting desktop environments where many other autoclickers don't work.
+
+## Features
+
+* Native Linux application written in C++
+* Supports X11
+* Supports Wayland:
+    * KDE Plasma
+    * GNOME
+    * Sway
+    * Hyprland
+* Configurable click interval + randomization(optional)
+* Left, right and scroll wheel mouse click support + custom keys 
+* Global shortcut support
+* Run in background support
+* Clean and simple Qt6 interface
+* No Electron or web technologies
+
+## Installation
+
+### Build from source
+
+#### Dependencies
+
+You need:
+
+* CMake
+* A C++17 compiler
+* Qt 6
+* X11 libraries
+* libXtst
+
+On **Debian / Ubuntu** based distributions:
+
+```bash
+sudo apt install cmake build-essential qt6-base-dev libx11-dev libxtst-dev
+```
+
+On **Arch**:
+
+```bash
+sudo pacman -S cmake gcc qt6-base libx11 libxtst
+```
+
+Optional KDE Plasma support:
+
+```bash
+sudo pacman -S kglobalaccel
+```
+
+On **Fedora**:
+
+```bash
+sudo dnf install cmake gcc-c++ qt6-qtbase-devel libX11-devel libXtst-devel
+```
+
+#### Build
+
+Clone the repository:
+
+```bash
+git clone https://github.com/limonyx/omniclicker.git
+cd omniclicker
+```
+
+Configure and build:
+
+```bash
+cmake -B build
+cmake --build build
+```
+
+#### Install system-wide
+
+
+```bash
+sudo cmake --install build
+```
+
+## Supported Desktop Environments
+
+| Environment        | Support |
+| ------------------ | ------- |
+| X11                | ✅       |
+| KDE Plasma Wayland | ✅       |
+| GNOME Wayland      | ✅       |
+| Sway               | ✅       |
+| Hyprland           | ✅       |
+| Niri               | Planned |
+| COSMIC             | Planned |
+
+## Contributing
+
+Contributions, bug reports, and suggestions are welcome.
+
+If omniclicker doesn't work correctly on your desktop environment, please open an issue and include:
+
+* Your desktop environment/compositor
+* Your session type (X11 or Wayland)
+* Any error messages
+
+## License
+
+omniclicker is licensed under the GNU General Public License v3.0 or later.

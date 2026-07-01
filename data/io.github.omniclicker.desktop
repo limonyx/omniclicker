@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Omni Clicker
+Comment=Native Linux autoclicker for X11 and Wayland-aware sessions
+Exec=omniclicker
+Icon=io.github.omniclicker
+Terminal=false
+Categories=Utility;Accessibility;
+StartupNotify=true

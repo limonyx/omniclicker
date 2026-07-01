@@ -1,0 +1,109 @@
+#include "Types.h"
+
+#include <algorithm>
+
+int ClickSettings::intervalMilliseconds() const
+{
+    const int safeValue = std::max(1, intervalValue);
+
+    switch (intervalUnit) {
+    case IntervalUnit::Milliseconds:
+        return safeValue;
+    case IntervalUnit::Seconds:
+        return safeValue * 1000;
+    case IntervalUnit::Minutes:
+        return safeValue * 60 * 1000;
+    }
+
+    return safeValue;
+}
+
+QString intervalUnitToString(IntervalUnit unit)
+{
+    switch (unit) {
+    case IntervalUnit::Milliseconds:
+        return QStringLiteral("milliseconds");
+    case IntervalUnit::Seconds:
+        return QStringLiteral("seconds");
+    case IntervalUnit::Minutes:
+        return QStringLiteral("minutes");
+    }
+
+    return QStringLiteral("milliseconds");
+}
+
+QString mouseButtonToString(MouseButton button)
+{
+    switch (button) {
+    case MouseButton::Left:
+        return QStringLiteral("left");
+    case MouseButton::Right:
+        return QStringLiteral("right");
+    case MouseButton::Middle:
+        return QStringLiteral("middle");
+    case MouseButton::CustomKey:
+        return QStringLiteral("custom key");
+    }
+
+    return QStringLiteral("left");
+}
+
+QString clickTypeToString(ClickType type)
+{
+    switch (type) {
+    case ClickType::Single:
+        return QStringLiteral("single");
+    case ClickType::Double:
+        return QStringLiteral("double");
+    }
+
+    return QStringLiteral("single");
+}
+
+QString positionModeToString(PositionMode mode)
+{
+    switch (mode) {
+    case PositionMode::CurrentCursor:
+        return QStringLiteral("current cursor");
+    case PositionMode::FixedCoordinate:
+        return QStringLiteral("fixed coordinate");
+    }
+
+    return QStringLiteral("current cursor");
+}
+
+IntervalUnit intervalUnitFromInt(int value)
+{
+    switch (value) {
+    case 1:
+        return IntervalUnit::Seconds;
+    case 2:
+        return IntervalUnit::Minutes;
+    default:
+        return IntervalUnit::Milliseconds;
+    }
+}
+
+MouseButton mouseButtonFromInt(int value)
+{
+    switch (value) {
+    case 1:
+        return MouseButton::Right;
+    case 2:
+        return MouseButton::Middle;
+    case 3:
+        return MouseButton::CustomKey;
+    default:
+        return MouseButton::Left;
+    }
+}
+
+ClickType clickTypeFromInt(int value)
+{
+    return value == 1 ? ClickType::Double : ClickType::Single;
+}
+
+PositionMode positionModeFromInt(int value)
+{
+    return value == 1 ? PositionMode::FixedCoordinate : PositionMode::CurrentCursor;
+}
