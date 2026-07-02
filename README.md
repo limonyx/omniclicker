@@ -6,6 +6,13 @@ omniclicker aims to provide a simple, clean, and intuitive autoclicking experien
 
 ![OmniClicker main window](app-screenshot.png)
 
+## Why omniclicker?
+
+Many Linux autoclickers only support X11 or require manual setup for specific Wayland compositors.
+
+OmniClicker is designed to work out of the box. It automatically uses the most appropriate backend for your desktop environment, providing native support for X11, KDE Plasma, GNOME, Sway, and Hyprland through desktop-specific integrations where available.
+
+The goal is simple: install it, choose your settings, and start clicking.
 ## Features
 
 * Native Linux application written in C++
@@ -17,7 +24,7 @@ omniclicker aims to provide a simple, clean, and intuitive autoclicking experien
     * Hyprland
 * Configurable click interval + randomization(optional)
 * Left, right and scroll wheel mouse click support + custom keys 
-* Global shortcut support
+* Global shortcut/hotkey support
 * Run in background support
 * Clean and simple Qt6 interface
 * No Electron or web technologies
@@ -108,3 +115,4 @@ If omniclicker doesn't work correctly on your desktop environment, please open a
 ## License
 
 omniclicker is licensed under the GNU General Public License v3.0 or later.
+
