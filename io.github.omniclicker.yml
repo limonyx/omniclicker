@@ -12,13 +12,12 @@ finish-args:
   # Wayland access for native Wayland UI
   - --socket=wayland
 
-  # Wayland click injection uses Linux input devices: /dev/uinput for the
-  # virtual click device, and /dev/input/event* only as the last-resort hotkey
-  # fallback. Prefer the narrower input-device grant on Flatpak versions that
-  # support it, and keep a conditional all-device fallback only for older
-  # Flatpak versions that do not know --device=input.
-  - --device-if=all:!has-input-device
-  - --device=input
+  # Wayland click injection currently opens /dev/uinput directly to create a
+  # virtual input device. Flatpak's narrower --device=input permission exposes
+  # /dev/input/event* but not /dev/uinput, so it is not enough for the current
+  # backend. This broad permission is the part most likely to need Flathub
+  # review justification or a future portal/libei replacement.
+  - --device=all
 
   # Allow native KDE Global Shortcuts backend.
   - --talk-name=org.kde.kglobalaccel
