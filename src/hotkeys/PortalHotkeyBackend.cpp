@@ -182,7 +182,7 @@ bool PortalHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString
 
     qCInfo(lcPortalHotkey) << "Attempting portal backend initialization";
 
-    QDBusConnection bus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus"));
+    QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) {
         qCWarning(lcPortalHotkey) << "Cannot connect to session D-Bus";
         if (error) {
@@ -332,7 +332,7 @@ void PortalHotkeyBackend::stop()
 
     qCInfo(lcPortalHotkey) << "Stopping portal backend";
 
-    QDBusConnection bus = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus"));
+    QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected()) {
         bus.disconnect(QString::fromLatin1(PortalService),
                        QString::fromLatin1(PortalPath),
@@ -384,7 +384,7 @@ void PortalHotkeyBackend::handleCreateSessionResponse(uint response, const QVari
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] Session created. sessionHandle:" << sessionHandle_;
 
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] Subscribing to ShortcutsChanged and Closed on sessionHandle:" << sessionHandle_;
-    QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")).connect(QString::fromLatin1(PortalService),
+    QDBusConnection::sessionBus().connect(QString::fromLatin1(PortalService),
                                           sessionHandle_,
                                           QString::fromLatin1(SessionInterface),
                                           QStringLiteral("Closed"),
@@ -393,7 +393,7 @@ void PortalHotkeyBackend::handleCreateSessionResponse(uint response, const QVari
     // ShortcutsChanged might be on GlobalShortcuts interface but the object path is the session.
     // wait, the spec says ShortcutsChanged is on the GlobalShortcuts interface, but the object path is the session.
     // Let's connect to it.
-    QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")).connect(QString::fromLatin1(PortalService),
+    QDBusConnection::sessionBus().connect(QString::fromLatin1(PortalService),
                                           sessionHandle_,
                                           QString::fromLatin1(GlobalShortcutsInterface),
                                           QStringLiteral("ShortcutsChanged"),
@@ -403,7 +403,7 @@ void PortalHotkeyBackend::handleCreateSessionResponse(uint response, const QVari
     QDBusInterface portal(QString::fromLatin1(PortalService),
                           QString::fromLatin1(PortalPath),
                           QString::fromLatin1(GlobalShortcutsInterface),
-                          QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")));
+                          QDBusConnection::sessionBus());
 
     qDBusRegisterMetaType<PortalShortcut>();
     qDBusRegisterMetaType<QList<PortalShortcut>>();
@@ -435,7 +435,7 @@ void PortalHotkeyBackend::handleCreateSessionResponse(uint response, const QVari
     bindRequestPath_ = reply.value().path();
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] BindShortcuts returned path:" << bindRequestPath_ << ". Connecting to Response signal...";
 
-    QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")).connect(QString::fromLatin1(PortalService),
+    QDBusConnection::sessionBus().connect(QString::fromLatin1(PortalService),
                                           bindRequestPath_,
                                           QString::fromLatin1(RequestInterface),
                                           QStringLiteral("Response"),
@@ -554,7 +554,7 @@ void PortalHotkeyBackend::disconnectRequest(const QString& path)
         return;
     }
 
-    QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")).disconnect(QString::fromLatin1(PortalService),
+    QDBusConnection::sessionBus().disconnect(QString::fromLatin1(PortalService),
                                              path,
                                              QString::fromLatin1(RequestInterface),
                                              QStringLiteral("Response"),
@@ -575,21 +575,10 @@ void PortalHotkeyBackend::closeSession()
     QDBusInterface session(QString::fromLatin1(PortalService),
                            sessionHandle_,
                            QString::fromLatin1(SessionInterface),
-                           QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")));
-
-    QEventLoop loop;
-    QTimer::singleShot(1000, &loop, &QEventLoop::quit);
-
-    QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("omniclicker_portal_bus")).connect(QString::fromLatin1(PortalService),
-                                          sessionHandle_,
-                                          QString::fromLatin1(SessionInterface),
-                                          QStringLiteral("Closed"),
-                                          &loop,
-                                          SLOT(quit()));
+                           QDBusConnection::sessionBus());
 
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] Calling Close on session. Destination: org.freedesktop.portal.Desktop Interface: org.freedesktop.portal.Session Method: Close";
-    session.call(QStringLiteral("Close"));
-    loop.exec();
+    session.asyncCall(QStringLiteral("Close"));
 
     qCInfo(lcPortalHotkey) << "Session closed successfully";
 }

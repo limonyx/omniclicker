@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStringList>
+#include <QFile>
 
 Q_LOGGING_CATEGORY(lcSwayHotkey, "omniclicker.hotkey.sway")
 
@@ -40,7 +41,11 @@ QString toSwayKeybind(const Hotkey& hotkey)
 bool runSwaymsg(const QString& command, QString* errorOut = nullptr)
 {
     QProcess proc;
-    proc.start(QStringLiteral("swaymsg"), { command });
+    if (QFile::exists(QStringLiteral("/.flatpak-info"))) {
+        proc.start(QStringLiteral("flatpak-spawn"), { QStringLiteral("--host"), QStringLiteral("swaymsg"), command });
+    } else {
+        proc.start(QStringLiteral("swaymsg"), { command });
+    }
     proc.waitForFinished(5000);
 
     if (proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0) {
@@ -73,7 +78,14 @@ bool SwayHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* 
     callback_ = std::move(callback);
 
     const QString bindStr = toSwayKeybind(hotkey);
-    const QString exe = QCoreApplication::applicationFilePath();
+
+    // Inside Flatpak, the host can't execute /app/bin/omniclicker directly.
+    QString exe;
+    if (QFile::exists(QStringLiteral("/.flatpak-info"))) {
+        exe = QStringLiteral("flatpak run io.github.omniclicker");
+    } else {
+        exe = QCoreApplication::applicationFilePath();
+    }
 
     // Use swaymsg to bind the key at runtime via IPC — no config files needed.
     const QString cmd = QStringLiteral("bindsym %1 exec \"%2\" --toggle").arg(bindStr, exe);

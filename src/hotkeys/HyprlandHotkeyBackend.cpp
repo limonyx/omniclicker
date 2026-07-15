@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStringList>
+#include <QFile>
 
 Q_LOGGING_CATEGORY(lcHyprlandHotkey, "omniclicker.hotkey.hyprland")
 
@@ -49,7 +50,21 @@ QString toHyprlandKey(int key)
 bool runHyprctl(const QStringList& args, QString* errorOut = nullptr)
 {
     QProcess proc;
-    proc.start(QStringLiteral("hyprctl"), args);
+    if (QFile::exists(QStringLiteral("/.flatpak-info"))) {
+        QStringList flatpakArgs;
+        
+        // Pass the HYPRLAND_INSTANCE_SIGNATURE to the host environment, 
+        // as flatpak-spawn clears it by default.
+        const QByteArray sig = qgetenv("HYPRLAND_INSTANCE_SIGNATURE");
+        if (!sig.isEmpty()) {
+            flatpakArgs << QStringLiteral("--env=HYPRLAND_INSTANCE_SIGNATURE=") + QString::fromUtf8(sig);
+        }
+        
+        flatpakArgs << QStringLiteral("--host") << QStringLiteral("hyprctl") << args;
+        proc.start(QStringLiteral("flatpak-spawn"), flatpakArgs);
+    } else {
+        proc.start(QStringLiteral("hyprctl"), args);
+    }
     proc.waitForFinished(5000);
 
     if (proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0) {
@@ -83,7 +98,14 @@ bool HyprlandHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QStri
 
     const QString modStr = toHyprlandModifiers(hotkey.modifiers);
     const QString keyStr = toHyprlandKey(hotkey.key);
-    const QString exe = QCoreApplication::applicationFilePath();
+
+    // Inside Flatpak, the host can't execute /app/bin/omniclicker directly.
+    QString exe;
+    if (QFile::exists(QStringLiteral("/.flatpak-info"))) {
+        exe = QStringLiteral("flatpak run io.github.omniclicker");
+    } else {
+        exe = QCoreApplication::applicationFilePath();
+    }
 
     // hyprctl keyword bind "MODS, KEY, exec, COMMAND"
     // Format: modifiers, key, dispatcher, params

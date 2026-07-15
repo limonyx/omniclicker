@@ -1,6 +1,7 @@
 #include "hotkeys/GnomeHotkeyBackend.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QKeySequence>
 #include <QLoggingCategory>
 #include <QProcess>
@@ -11,6 +12,30 @@ namespace {
 
 const QString BasePath = QStringLiteral("org.gnome.settings-daemon.plugins.media-keys");
 const QString CustomPath = QStringLiteral("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/omniclicker/");
+
+bool isFlatpak()
+{
+    static const bool result = QFile::exists(QStringLiteral("/.flatpak-info"));
+    return result;
+}
+
+bool runGsettings(const QStringList& args, QString* output = nullptr)
+{
+    QProcess proc;
+    if (isFlatpak()) {
+        QStringList flatpakArgs;
+        flatpakArgs << QStringLiteral("--host") << QStringLiteral("gsettings") << args;
+        proc.start(QStringLiteral("flatpak-spawn"), flatpakArgs);
+    } else {
+        proc.start(QStringLiteral("gsettings"), args);
+    }
+    proc.waitForFinished(5000);
+
+    if (output) {
+        *output = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+    }
+    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+}
 
 QString toGtkShortcut(const Hotkey& hotkey)
 {
@@ -40,17 +65,14 @@ bool GnomeHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString*
     callback_ = std::move(callback);
 
     // Get current list of custom keybindings
-    QProcess getProc;
-    getProc.start(QStringLiteral("gsettings"), { QStringLiteral("get"), BasePath, QStringLiteral("custom-keybindings") });
-    getProc.waitForFinished();
-    if (getProc.exitCode() != 0) {
+    QString list;
+    if (!runGsettings({ QStringLiteral("get"), BasePath, QStringLiteral("custom-keybindings") }, &list)) {
         if (error) {
             *error = QStringLiteral("Failed to read GNOME custom keybindings. Ensure gsettings is installed and accessible.");
         }
         return false;
     }
 
-    QString list = QString::fromUtf8(getProc.readAllStandardOutput()).trimmed();
     if (list.startsWith(QStringLiteral("@as []"))) {
         list = QStringLiteral("[]");
     }
@@ -64,10 +86,7 @@ bool GnomeHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString*
             list += QStringLiteral(", '%1']").arg(CustomPath);
         }
 
-        QProcess setProc;
-        setProc.start(QStringLiteral("gsettings"), { QStringLiteral("set"), BasePath, QStringLiteral("custom-keybindings"), list });
-        setProc.waitForFinished();
-        if (setProc.exitCode() != 0) {
+        if (!runGsettings({ QStringLiteral("set"), BasePath, QStringLiteral("custom-keybindings"), list })) {
             if (error) {
                 *error = QStringLiteral("Failed to append to GNOME custom keybindings.");
             }
@@ -78,17 +97,20 @@ bool GnomeHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString*
     // Set properties for our shortcut
     const QString schemaPath = BasePath + QStringLiteral(".custom-keybinding:") + CustomPath;
 
-    QProcess proc;
-    proc.start(QStringLiteral("gsettings"), { QStringLiteral("set"), schemaPath, QStringLiteral("name"), QStringLiteral("Omni Clicker Toggle") });
-    proc.waitForFinished();
+    runGsettings({ QStringLiteral("set"), schemaPath, QStringLiteral("name"), QStringLiteral("Omni Clicker Toggle") });
 
-    const QString exe = QCoreApplication::applicationFilePath() + QStringLiteral(" --toggle");
-    proc.start(QStringLiteral("gsettings"), { QStringLiteral("set"), schemaPath, QStringLiteral("command"), exe });
-    proc.waitForFinished();
+    // Inside Flatpak, the toggle command must use 'flatpak run' since the host
+    // can't directly execute a binary inside the sandbox.
+    QString exe;
+    if (isFlatpak()) {
+        exe = QStringLiteral("flatpak run io.github.omniclicker --toggle");
+    } else {
+        exe = QCoreApplication::applicationFilePath() + QStringLiteral(" --toggle");
+    }
+    runGsettings({ QStringLiteral("set"), schemaPath, QStringLiteral("command"), exe });
 
     const QString bindStr = toGtkShortcut(hotkey);
-    proc.start(QStringLiteral("gsettings"), { QStringLiteral("set"), schemaPath, QStringLiteral("binding"), bindStr });
-    proc.waitForFinished();
+    runGsettings({ QStringLiteral("set"), schemaPath, QStringLiteral("binding"), bindStr });
 
     active_ = true;
     qCInfo(lcGnomeHotkey) << "Successfully registered GNOME custom shortcut:" << bindStr << "->" << exe;
@@ -107,27 +129,20 @@ void GnomeHotkeyBackend::stop()
 
 void GnomeHotkeyBackend::removeFromGsettings()
 {
-    QProcess getProc;
-    getProc.start(QStringLiteral("gsettings"), { QStringLiteral("get"), BasePath, QStringLiteral("custom-keybindings") });
-    getProc.waitForFinished();
-    if (getProc.exitCode() == 0) {
-        QString list = QString::fromUtf8(getProc.readAllStandardOutput()).trimmed();
+    QString list;
+    if (runGsettings({ QStringLiteral("get"), BasePath, QStringLiteral("custom-keybindings") }, &list)) {
         const QString toRemove = QStringLiteral("'") + CustomPath + QStringLiteral("'");
         if (list.contains(toRemove)) {
             list.replace(toRemove + QStringLiteral(", "), QStringLiteral(""));
             list.replace(QStringLiteral(", ") + toRemove, QStringLiteral(""));
             list.replace(toRemove, QStringLiteral(""));
 
-            QProcess setProc;
-            setProc.start(QStringLiteral("gsettings"), { QStringLiteral("set"), BasePath, QStringLiteral("custom-keybindings"), list });
-            setProc.waitForFinished();
+            runGsettings({ QStringLiteral("set"), BasePath, QStringLiteral("custom-keybindings"), list });
         }
     }
 
     const QString schemaPath = BasePath + QStringLiteral(".custom-keybinding:") + CustomPath;
-    QProcess resetProc;
-    resetProc.start(QStringLiteral("gsettings"), { QStringLiteral("reset-recursively"), schemaPath });
-    resetProc.waitForFinished();
+    runGsettings({ QStringLiteral("reset-recursively"), schemaPath });
     
     qCInfo(lcGnomeHotkey) << "Removed GNOME custom shortcut.";
 }

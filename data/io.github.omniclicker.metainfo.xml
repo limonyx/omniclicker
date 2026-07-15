@@ -7,10 +7,41 @@
   <project_license>MIT</project_license>
   <description>
     <p>
-      Omni Clicker is a lightweight desktop utility inspired by OP Auto Clicker.
-      It supports configurable intervals, click types, mouse buttons or custom key presses,
-      global hotkeys, current-cursor clicking, and an optional system tray icon.
+      OmniClicker is a native Linux autoclicker designed to work out of the box on both X11 and modern Wayland desktops.
+    </p>
+
+    <p>
+      Unlike many Linux autoclickers, OmniClicker automatically selects the best backend for your desktop environment, providing native support for X11, KDE Plasma, GNOME, Sway, and Hyprland with little or no manual configuration.
+    </p>
+
+    <p>
+      It features configurable click intervals with optional randomization, left, right, middle, and custom key support, global hotkeys, background operation, and a clean Qt6 interface built specifically for Linux.
     </p>
   </description>
   <launchable type="desktop-id">io.github.omniclicker.desktop</launchable>
+  <url type="homepage">https://github.com/limonyx/omniclicker</url>
+  <url type="bugtracker">https://github.com/limonyx/omniclicker/issues</url>
+  <url type="donation">https://ko-fi.com/limonyx</url>
+  <developer id="io.github.limonyx">
+    <name>limonyx</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/limonyx/omniclicker/main/data/screenshot.png</image>
+      <caption>The main Omni Clicker interface</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="1.0.0" date="2026-07-01">
+      <description>
+        <p>First major release.</p>
+        <ul>
+          <li>Added support for custom key injection.</li>
+          <li>Added Hyprland native IPC global shortcuts support.</li>
+          <li>Improved GNOME Wayland shortcut behavior.</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
 </component>

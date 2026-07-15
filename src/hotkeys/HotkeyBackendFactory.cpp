@@ -91,7 +91,7 @@ std::vector<std::unique_ptr<HotkeyBackend>> createHotkeyBackendCandidates()
 
     if (session == QStringLiteral("wayland")) {
         if (desktop.contains(QStringLiteral("KDE"))) {
-            qCInfo(lcBackendFactory) << "KDE Plasma Wayland detected. Preferring native KGlobalAccel over Portal.";
+            qCInfo(lcBackendFactory) << "KDE Plasma Wayland detected. Preferring native KGlobalAccel.";
 #ifdef HAVE_KGLOBALACCEL
             candidates.push_back(std::make_unique<KdeGlobalAccelBackend>());
 #endif
