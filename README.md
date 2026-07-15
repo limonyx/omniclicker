@@ -67,7 +67,7 @@ On **Fedora**:
 sudo dnf install cmake gcc-c++ qt6-qtbase-devel libX11-devel libXtst-devel
 ```
 
-#### Build
+### Build
 
 Clone the repository:
 
@@ -79,17 +79,13 @@ cd omniclicker
 Configure and build:
 
 ```bash
-# Configure the build for your local user (recommended for Wayland compatibility)
 cmake -B build -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build
 ```
 
-#### Install
-
-It is highly recommended to install the app locally rather than system-wide. Wayland global shortcuts (via `xdg-desktop-portal`) require the app's `.desktop` file to be in a standard location like `~/.local/share/applications/`.
+### Install
 
 ```bash
-# Install to ~/.local/bin/ (No sudo required!)
 cmake --install build
 ```
 

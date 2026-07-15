@@ -35,5 +35,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/limonyx/omniclicker.git
-        branch: flatpak
-#        tag: v1.0.0
+        branch: main
+        tag: v1.0.1
