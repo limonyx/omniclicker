@@ -4,7 +4,7 @@ A native Linux autoclicker with support for X11 and modern Wayland desktops.
 
 omniclicker aims to provide a simple, clean, and intuitive autoclicking experience while supporting desktop environments where many other autoclickers don't work.
 
-![OmniClicker main window](app-screenshot.png)
+![OmniClicker main window](app_screenshot.png)
 
 ## Why omniclicker?
 
