@@ -93,11 +93,11 @@ cmake --install build
 
 | Environment        | Support |
 | ------------------ | ------- |
-| X11                | ✅       |
-| KDE Plasma Wayland | ✅       |
-| GNOME Wayland      | ✅       |
-| Sway               | ✅       |
-| Hyprland           | ✅       |
+| X11                | yes     |
+| KDE Plasma Wayland | yes     |
+| GNOME Wayland      | yes     |
+| Sway               | yes     |
+| Hyprland           | yes     |
 | Niri               | Planned |
 | COSMIC             | Planned |
 
