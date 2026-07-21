@@ -118,8 +118,9 @@ QString X11HotkeyBackend::name() const
     return QStringLiteral("X11 passive key grab");
 }
 
-bool X11HotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool X11HotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
+    Q_UNUSED(activationId)
     stop();
 
     display_ = XOpenDisplay(nullptr);

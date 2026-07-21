@@ -23,3 +23,6 @@ test_evdev.py
 tools/
 packaging/
 ARCHITECTURE.md
+omniclicker-*
+.flatpak-builder/
+pkg/

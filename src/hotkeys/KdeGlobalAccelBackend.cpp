@@ -10,6 +10,29 @@ namespace {
 
 constexpr const char* ActionUnique = "toggle-autoclicking";
 
+QString actionIdForActivationId(const QString& activationId)
+{
+    QString id = activationId.toLower();
+    for (QChar& ch : id) {
+        if (!ch.isLetterOrNumber()) {
+            ch = QLatin1Char('-');
+        }
+    }
+    while (id.contains(QStringLiteral("--"))) {
+        id.replace(QStringLiteral("--"), QStringLiteral("-"));
+    }
+    if (id.startsWith(QLatin1Char('-'))) {
+        id.remove(0, 1);
+    }
+    if (id.endsWith(QLatin1Char('-'))) {
+        id.chop(1);
+    }
+    if (id.isEmpty()) {
+        id = QStringLiteral("toggle");
+    }
+    return QStringLiteral("%1-%2").arg(QString::fromLatin1(ActionUnique), id);
+}
+
 } // namespace
 
 KdeGlobalAccelBackend::KdeGlobalAccelBackend(QObject* parent)
@@ -27,13 +50,13 @@ QString KdeGlobalAccelBackend::name() const
     return QStringLiteral("KDE KGlobalAccel");
 }
 
-bool KdeGlobalAccelBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool KdeGlobalAccelBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
 
     action_ = new QAction(this);
-    action_->setObjectName(QString::fromLatin1(ActionUnique));
-    action_->setText(QStringLiteral("Toggle autoclicking"));
+    action_->setObjectName(actionIdForActivationId(activationId));
+    action_->setText(QStringLiteral("Toggle autoclicking %1").arg(activationId));
 
     callback_ = std::move(callback);
     connect(action_, &QAction::triggered, this, [this]() {

@@ -164,8 +164,9 @@ QString EvdevHotkeyBackend::name() const
     return QStringLiteral("evdev keyboard monitor");
 }
 
-bool EvdevHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool EvdevHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
+    Q_UNUSED(activationId)
     stop();
 
     const std::optional<unsigned short> evdevCode = qtKeyToEvdev(hotkey.key);

@@ -2,13 +2,15 @@
 
 #include "hotkeys/HotkeyBackend.h"
 
+#include <QString>
+
 class GnomeHotkeyBackend final : public HotkeyBackend {
 public:
     GnomeHotkeyBackend() = default;
     ~GnomeHotkeyBackend() override;
 
     QString name() const override;
-    bool start(const Hotkey& hotkey, Callback callback, QString* error) override;
+    bool start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error) override;
     void stop() override;
     QString limitation() const override;
 
@@ -17,4 +19,5 @@ private:
 
     bool active_ = false;
     Callback callback_;
+    QString customPath_;
 };

@@ -1,15 +1,17 @@
 #include "MainWindow.h"
 
-#include "Config.h"
 #include "backends/InputBackend.h"
-#include "hotkeys/HotkeyCaptureEdit.h"
 #include "hotkeys/Hotkey.h"
+#include "hotkeys/HotkeyCaptureEdit.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
+#include <QCoreApplication>
+#include <QDesktopServices>
+#include <QEvent>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -18,8 +20,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
-#include <QDesktopServices>
-#include <QUrl>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QShortcut>
@@ -27,18 +28,16 @@
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QSystemTrayIcon>
+#include <QStyle>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QTimer>
-#include <QCoreApplication>
+#include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #ifndef APP_VERSION
 #define APP_VERSION "unknown"
-#endif
-#ifndef BUILD_TYPE
-#define BUILD_TYPE "unknown"
-#endif
-#ifndef GIT_HASH
-#define GIT_HASH "unknown"
 #endif
 #ifndef BUILD_TIMESTAMP
 #define BUILD_TIMESTAMP "unknown"
@@ -47,6 +46,8 @@
 #include <algorithm>
 
 namespace {
+
+constexpr int MaximumProfiles = 8;
 
 void addComboItem(QComboBox* combo, const QString& label, int value)
 {
@@ -78,35 +79,101 @@ QString intervalSummary(const ClickSettings& settings)
     return QStringLiteral("%1 %2").arg(settings.intervalValue).arg(intervalUnitToString(settings.intervalUnit));
 }
 
+QString tabIntervalSummary(const ClickSettings& settings)
+{
+    QString unit;
+    switch (settings.intervalUnit) {
+    case IntervalUnit::Milliseconds:
+        unit = QStringLiteral("ms");
+        break;
+    case IntervalUnit::Seconds:
+        unit = QStringLiteral("s");
+        break;
+    case IntervalUnit::Minutes:
+        unit = QStringLiteral("min");
+        break;
+    }
+    return QStringLiteral("%1 %2").arg(settings.intervalValue).arg(unit);
+}
+
+QString buttonSummary(const ClickSettings& settings)
+{
+    if (settings.mouseButton == MouseButton::CustomKey) {
+        return QStringLiteral("key %1").arg(settings.customKey);
+    }
+    return QStringLiteral("%1, %2").arg(mouseButtonToString(settings.mouseButton), clickTypeToString(settings.clickType));
+}
+
+QString tabSummary(const ClickSettings& settings)
+{
+    return QStringLiteral("%1 | %2 | %3")
+        .arg(settings.hotkey, mouseButtonToString(settings.mouseButton), tabIntervalSummary(settings));
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
-    , settings_(AppConfig::load())
 {
+    const AppSettings appSettings = AppConfig::loadAppSettings();
+    startMinimized_ = appSettings.startMinimized;
+    keepRunningInBackground_ = appSettings.keepRunningInBackground;
+
     buildUi();
     setupTray();
-    connectSignals();
-    applySettingsToUi();
-    refreshBackendCapabilities();
-    registerHotkey();
+    connect(&hotkeys_, &GlobalHotkeyManager::hotkeyActivated, this, [this](const QString& hotkeyText) {
+        triggerHotkeyToggle(hotkeyText);
+    });
+    connect(&hotkeys_, &GlobalHotkeyManager::errorOccurred, this, [this](const QString& message) {
+        statusBar()->showMessage(message, 8000);
+        if (ProfileUi* ui = currentProfile()) {
+            ui->limitationText->setPlainText(message);
+        }
+    });
+    connect(&hotkeys_, &GlobalHotkeyManager::statusChanged, this, [this](const QString& message) {
+        statusBar()->showMessage(message, 5000);
+        if (ProfileUi* ui = currentProfile()) {
+            ui->limitationText->setPlainText(message);
+        }
+    });
+
+    loading_ = true;
+    QVector<ClickProfile> profiles = appSettings.profiles;
+    if (profiles.isEmpty()) {
+        profiles.append(ClickProfile {});
+    }
+    for (const ClickProfile& profile : profiles) {
+        if (profiles_.size() == MaximumProfiles) {
+            break;
+        }
+        addProfile(profile, profiles_.isEmpty());
+    }
+    loading_ = false;
+
+    refreshAllSummaries();
+    refreshAllBackendCapabilities();
+    registerHotkeys();
+    QTimer::singleShot(0, this, &MainWindow::updateTabSizing);
 }
 
 MainWindow::~MainWindow()
 {
     hotkeys_.stop();
-    engine_.stop();
+    for (ProfileUi* ui : profiles_) {
+        ui->engine->stop();
+    }
+    qDeleteAll(profiles_);
 }
 
 bool MainWindow::shouldStartMinimized() const
 {
-    return settings_.startMinimized;
+    return startMinimized_;
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     persistSettings();
-    if (settings_.keepRunningInBackground && trayIcon_ && trayIcon_->isVisible()) {
+    if (keepRunningInBackground_ && trayIcon_ && trayIcon_->isVisible()) {
         hide();
         event->ignore();
         trayIcon_->showMessage(QStringLiteral("Omni Clicker"),
@@ -116,7 +183,9 @@ void MainWindow::closeEvent(QCloseEvent* event)
         return;
     }
 
-    engine_.stop();
+    for (ProfileUi* ui : profiles_) {
+        ui->engine->stop();
+    }
     hotkeys_.stop();
     event->accept();
     QTimer::singleShot(0, qApp, &QCoreApplication::quit);
@@ -126,62 +195,40 @@ void MainWindow::buildUi()
 {
     setWindowTitle(QStringLiteral("Omni Clicker"));
     setWindowIcon(QIcon::fromTheme(QStringLiteral("io.github.omniclicker")));
-    resize(760, 520);
-    setMinimumSize(680, 460);
+    resize(760, 540);
+    setMinimumSize(680, 480);
 
     auto* central = new QWidget(this);
     auto* root = new QVBoxLayout(central);
     root->setContentsMargins(16, 16, 16, 12);
-    root->setSpacing(12);
+    root->setSpacing(10);
 
-    auto* header = new QHBoxLayout();
-    auto* titleBlock = new QVBoxLayout();
-    auto* title = new QLabel(QStringLiteral("Omni Clicker"), central);
-    title->setObjectName(QStringLiteral("Title"));
-    auto* subtitle = new QLabel(QStringLiteral("Native clicking controls for X11 and Wayland-aware sessions."), central);
-    subtitle->setObjectName(QStringLiteral("Subtitle"));
-    titleBlock->addWidget(title);
-    titleBlock->addWidget(subtitle);
+    tabs_ = new QTabWidget(central);
+    tabs_->setDocumentMode(true);
+    tabs_->setMovable(true);
+    tabs_->tabBar()->setElideMode(Qt::ElideRight);
+    tabs_->tabBar()->setUsesScrollButtons(false);
+    tabs_->tabBar()->setMouseTracking(true);
+    tabs_->tabBar()->installEventFilter(this);
+    addTabButton_ = new QToolButton(tabs_->tabBar());
+    addTabButton_->setText(QStringLiteral("+"));
+    addTabButton_->setToolTip(QStringLiteral("Add tab"));
+    addTabButton_->setAutoRaise(true);
+    addTabButton_->setFixedSize(26, 26);
+    addTabButton_->setStyleSheet(QStringLiteral(
+        "QToolButton { border: 0; border-radius: 13px; font-size: 18px; }"
+        "QToolButton:hover { background-color: palette(midlight); }"));
+    addTabButton_->show();
+    root->addWidget(tabs_, 1);
 
-    startStopButton_ = new QPushButton(QStringLiteral("Start clicking"), central);
-    startStopButton_->setObjectName(QStringLiteral("PrimaryButton"));
-    startStopButton_->setMinimumHeight(42);
-    startStopButton_->setMinimumWidth(170);
-
-    header->addLayout(titleBlock, 1);
-    header->addWidget(startStopButton_);
-    root->addLayout(header);
-
-    auto* content = new QHBoxLayout();
-    content->setSpacing(12);
-
-    auto* leftColumn = new QVBoxLayout();
-    leftColumn->setSpacing(12);
-    leftColumn->addWidget(createClickOptionsGroup());
-    leftColumn->addWidget(createSettingsGroup());
-    leftColumn->addStretch();
-    donateButton_ = new QPushButton(QStringLiteral("Donate"), central);
-    leftColumn->addWidget(donateButton_, 0, Qt::AlignLeft);
-
-    auto* rightColumn = new QVBoxLayout();
-    rightColumn->setSpacing(12);
-    rightColumn->addWidget(createStatusGroup());
-    rightColumn->addWidget(createHotkeyGroup());
-    rightColumn->addStretch();
-    auto* applyRow = new QHBoxLayout();
-    applyRow->addStretch();
-    resetButton_ = new QPushButton(QStringLiteral("Reset"), central);
-    applyRow->addWidget(resetButton_);
-    applyRow->addWidget(applyHotkeyButton_);
-    rightColumn->addLayout(applyRow);
-
-    content->addLayout(leftColumn, 3);
-    content->addLayout(rightColumn, 2);
-    root->addLayout(content, 1);
-
-    focusedShortcut_ = new QShortcut(this);
-    focusedShortcut_->setContext(Qt::ApplicationShortcut);
-    focusedShortcut_->setEnabled(false);
+    connect(addTabButton_, &QToolButton::clicked, this, &MainWindow::createNewProfile);
+    connect(tabs_, &QTabWidget::currentChanged, this, [this]() {
+        updateTrayState();
+        updateTabCloseButtons();
+    });
+    connect(tabs_->tabBar(), &QTabBar::tabMoved, this, [this]() {
+        positionAddTabButton();
+    });
 
     setCentralWidget(central);
     statusBar()->showMessage(QStringLiteral("Stopped"));
@@ -191,277 +238,366 @@ void MainWindow::buildUi()
     statusBar()->addPermanentWidget(buildInfoLabel);
 }
 
-QGroupBox* MainWindow::createClickOptionsGroup()
+MainWindow::ProfileUi* MainWindow::addProfile(const ClickProfile& profile, bool makeCurrent)
 {
-    auto* group = new QGroupBox(QStringLiteral("Click options"), this);
+    auto* ui = new ProfileUi;
+    ui->profile = profile;
+    ui->profile.settings.startMinimized = startMinimized_;
+    ui->profile.settings.keepRunningInBackground = keepRunningInBackground_;
+    ui->engine = new ClickEngine(this);
+    ui->page = buildProfilePage(ui);
+    profiles_.append(ui);
+
+    applyProfileToUi(ui);
+    connectProfileSignals(ui);
+
+    const int index = tabs_->addTab(ui->page, tabSummary(ui->profile.settings));
+    if (makeCurrent) {
+        tabs_->setCurrentIndex(index);
+    }
+    updateTabCloseButtons();
+    addTabButton_->setVisible(profiles_.size() < MaximumProfiles);
+    updateTabSizing();
+    positionAddTabButton();
+    return ui;
+}
+
+QWidget* MainWindow::buildProfilePage(ProfileUi* ui)
+{
+    auto* page = new QWidget(tabs_);
+    auto* root = new QVBoxLayout(page);
+    root->setContentsMargins(0, 12, 0, 0);
+    root->setSpacing(12);
+
+    auto* header = new QHBoxLayout();
+    ui->enabledCheck = new QCheckBox(QStringLiteral("Enabled"), page);
+    ui->enabledCheck->setToolTip(QStringLiteral("Disabled tabs ignore hotkey activation."));
+    ui->startStopButton = new QPushButton(QStringLiteral("Start clicking"), page);
+    ui->startStopButton->setObjectName(QStringLiteral("PrimaryButton"));
+    ui->startStopButton->setMinimumHeight(42);
+    ui->startStopButton->setMinimumWidth(170);
+    header->addWidget(ui->enabledCheck);
+    header->addStretch();
+    header->addWidget(ui->startStopButton);
+    root->addLayout(header);
+
+    auto* content = new QHBoxLayout();
+    content->setSpacing(12);
+
+    auto* leftColumn = new QVBoxLayout();
+    leftColumn->setSpacing(12);
+    leftColumn->addWidget(createClickOptionsGroup(ui));
+    leftColumn->addWidget(createSettingsGroup(ui));
+    leftColumn->addStretch();
+    ui->donateButton = new QPushButton(QStringLiteral("Donate"), page);
+    leftColumn->addWidget(ui->donateButton, 0, Qt::AlignLeft);
+
+    auto* rightColumn = new QVBoxLayout();
+    rightColumn->setSpacing(12);
+    rightColumn->addWidget(createStatusGroup(ui));
+    rightColumn->addWidget(createHotkeyGroup(ui));
+    rightColumn->addStretch();
+    auto* applyRow = new QHBoxLayout();
+    applyRow->addStretch();
+    ui->resetButton = new QPushButton(QStringLiteral("Reset"), page);
+    applyRow->addWidget(ui->resetButton);
+    applyRow->addWidget(ui->applyHotkeyButton);
+    rightColumn->addLayout(applyRow);
+
+    content->addLayout(leftColumn, 3);
+    content->addLayout(rightColumn, 2);
+    root->addLayout(content, 1);
+    return page;
+}
+
+QGroupBox* MainWindow::createClickOptionsGroup(ProfileUi* ui)
+{
+    auto* group = new QGroupBox(QStringLiteral("Click options"), ui->page);
     auto* layout = new QGridLayout(group);
     layout->setHorizontalSpacing(8);
     layout->setVerticalSpacing(8);
     layout->setColumnStretch(1, 1);
     layout->setColumnStretch(3, 1);
 
-    intervalSpin_ = new QSpinBox(group);
-    intervalSpin_->setRange(1, 999999);
-    intervalSpin_->setMinimumWidth(92);
+    ui->intervalSpin = new QSpinBox(group);
+    ui->intervalSpin->setRange(1, 999999);
+    ui->intervalSpin->setMinimumWidth(92);
 
-    intervalUnitCombo_ = new QComboBox(group);
-    addComboItem(intervalUnitCombo_, QStringLiteral("milliseconds"), static_cast<int>(IntervalUnit::Milliseconds));
-    addComboItem(intervalUnitCombo_, QStringLiteral("seconds"), static_cast<int>(IntervalUnit::Seconds));
-    addComboItem(intervalUnitCombo_, QStringLiteral("minutes"), static_cast<int>(IntervalUnit::Minutes));
+    ui->intervalUnitCombo = new QComboBox(group);
+    addComboItem(ui->intervalUnitCombo, QStringLiteral("milliseconds"), static_cast<int>(IntervalUnit::Milliseconds));
+    addComboItem(ui->intervalUnitCombo, QStringLiteral("seconds"), static_cast<int>(IntervalUnit::Seconds));
+    addComboItem(ui->intervalUnitCombo, QStringLiteral("minutes"), static_cast<int>(IntervalUnit::Minutes));
 
     layout->addWidget(fieldLabel(QStringLiteral("Interval"), group), 0, 0);
-    layout->addWidget(intervalSpin_, 0, 1);
-    layout->addWidget(intervalUnitCombo_, 0, 2, 1, 2);
+    layout->addWidget(ui->intervalSpin, 0, 1);
+    layout->addWidget(ui->intervalUnitCombo, 0, 2, 1, 2);
 
-    buttonCombo_ = new QComboBox(group);
-    addComboItem(buttonCombo_, QStringLiteral("Left click"), static_cast<int>(MouseButton::Left));
-    addComboItem(buttonCombo_, QStringLiteral("Right click"), static_cast<int>(MouseButton::Right));
-    addComboItem(buttonCombo_, QStringLiteral("Middle click"), static_cast<int>(MouseButton::Middle));
-    addComboItem(buttonCombo_, QStringLiteral("Custom key"), static_cast<int>(MouseButton::CustomKey));
+    ui->buttonCombo = new QComboBox(group);
+    addComboItem(ui->buttonCombo, QStringLiteral("Left click"), static_cast<int>(MouseButton::Left));
+    addComboItem(ui->buttonCombo, QStringLiteral("Right click"), static_cast<int>(MouseButton::Right));
+    addComboItem(ui->buttonCombo, QStringLiteral("Middle click"), static_cast<int>(MouseButton::Middle));
+    addComboItem(ui->buttonCombo, QStringLiteral("Custom key"), static_cast<int>(MouseButton::CustomKey));
 
-    customKeyEdit_ = new HotkeyCaptureEdit(group);
-    customKeyEdit_->setPlaceholderText(QStringLiteral("Press the key to repeat"));
-    customKeyEdit_->setToolTip(QStringLiteral("This key is pressed at each interval while Omni Clicker is running."));
+    ui->customKeyEdit = new HotkeyCaptureEdit(group);
+    ui->customKeyEdit->setPlaceholderText(QStringLiteral("Press the key to repeat"));
+    ui->customKeyEdit->setToolTip(QStringLiteral("This key is pressed at each interval while Omni Clicker is running."));
 
-    clickTypeCombo_ = new QComboBox(group);
-    addComboItem(clickTypeCombo_, QStringLiteral("Single"), static_cast<int>(ClickType::Single));
-    addComboItem(clickTypeCombo_, QStringLiteral("Double"), static_cast<int>(ClickType::Double));
+    ui->clickTypeCombo = new QComboBox(group);
+    addComboItem(ui->clickTypeCombo, QStringLiteral("Single"), static_cast<int>(ClickType::Single));
+    addComboItem(ui->clickTypeCombo, QStringLiteral("Double"), static_cast<int>(ClickType::Double));
 
     layout->addWidget(fieldLabel(QStringLiteral("Button"), group), 1, 0);
-    layout->addWidget(buttonCombo_, 1, 1);
+    layout->addWidget(ui->buttonCombo, 1, 1);
     layout->addWidget(fieldLabel(QStringLiteral("Type"), group), 1, 2);
-    layout->addWidget(clickTypeCombo_, 1, 3);
+    layout->addWidget(ui->clickTypeCombo, 1, 3);
 
-    customKeyLabel_ = fieldLabel(QStringLiteral("Custom key"), group);
-    layout->addWidget(customKeyLabel_, 2, 0);
-    layout->addWidget(customKeyEdit_, 2, 1, 1, 3);
+    ui->customKeyLabel = fieldLabel(QStringLiteral("Custom key"), group);
+    layout->addWidget(ui->customKeyLabel, 2, 0);
+    layout->addWidget(ui->customKeyEdit, 2, 1, 1, 3);
 
-    infiniteCheck_ = new QCheckBox(QStringLiteral("Run until stopped"), group);
-    limitSpin_ = new QSpinBox(group);
-    limitSpin_->setRange(1, 1000000000);
+    ui->infiniteCheck = new QCheckBox(QStringLiteral("Run until stopped"), group);
+    ui->limitSpin = new QSpinBox(group);
+    ui->limitSpin->setRange(1, 1000000000);
 
-    layout->addWidget(infiniteCheck_, 3, 0, 1, 2);
+    layout->addWidget(ui->infiniteCheck, 3, 0, 1, 2);
     layout->addWidget(fieldLabel(QStringLiteral("Limit"), group), 3, 2);
-    layout->addWidget(limitSpin_, 3, 3);
+    layout->addWidget(ui->limitSpin, 3, 3);
 
-    randomizeCheck_ = new QCheckBox(QStringLiteral("Randomize"), group);
-    jitterSpin_ = new QSpinBox(group);
-    jitterSpin_->setRange(1, 95);
-    jitterSpin_->setSuffix(QStringLiteral("%"));
+    ui->randomizeCheck = new QCheckBox(QStringLiteral("Randomize"), group);
+    ui->jitterSpin = new QSpinBox(group);
+    ui->jitterSpin->setRange(1, 95);
+    ui->jitterSpin->setSuffix(QStringLiteral("%"));
 
-    layout->addWidget(randomizeCheck_, 4, 0, 1, 2);
+    layout->addWidget(ui->randomizeCheck, 4, 0, 1, 2);
     layout->addWidget(fieldLabel(QStringLiteral("Jitter"), group), 4, 2);
-    layout->addWidget(jitterSpin_, 4, 3);
+    layout->addWidget(ui->jitterSpin, 4, 3);
 
     return group;
 }
 
-QGroupBox* MainWindow::createHotkeyGroup()
+QGroupBox* MainWindow::createHotkeyGroup(ProfileUi* ui)
 {
-    auto* group = new QGroupBox(QStringLiteral("Hotkey"), this);
+    auto* group = new QGroupBox(QStringLiteral("Hotkey"), ui->page);
     auto* layout = new QGridLayout(group);
     layout->setHorizontalSpacing(8);
     layout->setVerticalSpacing(8);
     layout->setColumnStretch(1, 1);
 
-    hotkeyEdit_ = new HotkeyCaptureEdit(group);
-    hotkeyEdit_->setToolTip(QStringLiteral("Click here, press the shortcut, then click Apply."));
-    applyHotkeyButton_ = new QPushButton(QStringLiteral("Apply"), this);
+    ui->hotkeyEdit = new HotkeyCaptureEdit(group);
+    ui->hotkeyEdit->setToolTip(QStringLiteral("Click here, press the shortcut, then click Apply."));
+    ui->applyHotkeyButton = new QPushButton(QStringLiteral("Apply"), ui->page);
     layout->addWidget(fieldLabel(QStringLiteral("Toggle"), group), 0, 0);
-    layout->addWidget(hotkeyEdit_, 0, 1);
+    layout->addWidget(ui->hotkeyEdit, 0, 1);
 
     return group;
 }
 
-QGroupBox* MainWindow::createSettingsGroup()
+QGroupBox* MainWindow::createSettingsGroup(ProfileUi* ui)
 {
-    auto* group = new QGroupBox(QStringLiteral("Settings"), this);
+    auto* group = new QGroupBox(QStringLiteral("Settings"), ui->page);
     auto* layout = new QVBoxLayout(group);
     layout->setSpacing(8);
 
-    startMinimizedCheck_ = new QCheckBox(QStringLiteral("Start minimized"), group);
-    startMinimizedCheck_->setToolTip(QStringLiteral("Start as a minimized taskbar window instead of opening in the foreground."));
+    ui->startMinimizedCheck = new QCheckBox(QStringLiteral("Start minimized"), group);
+    ui->startMinimizedCheck->setToolTip(QStringLiteral("Start as a minimized taskbar window instead of opening in the foreground."));
 
-    keepRunningInBackgroundCheck_ = new QCheckBox(QStringLiteral("Keep running in background with tray icon"), group);
-    keepRunningInBackgroundCheck_->setToolTip(QStringLiteral("When enabled, closing the window hides Omni Clicker to the tray instead of quitting."));
+    ui->keepRunningInBackgroundCheck = new QCheckBox(QStringLiteral("Keep running in background with tray icon"), group);
+    ui->keepRunningInBackgroundCheck->setToolTip(QStringLiteral("When enabled, closing the window hides Omni Clicker to the tray instead of quitting."));
 
-    layout->addWidget(startMinimizedCheck_);
-    layout->addWidget(keepRunningInBackgroundCheck_);
-
+    layout->addWidget(ui->startMinimizedCheck);
+    layout->addWidget(ui->keepRunningInBackgroundCheck);
     return group;
 }
 
-QGroupBox* MainWindow::createStatusGroup()
+QGroupBox* MainWindow::createStatusGroup(ProfileUi* ui)
 {
-    auto* group = new QGroupBox(QStringLiteral("Status"), this);
+    auto* group = new QGroupBox(QStringLiteral("Status"), ui->page);
     auto* layout = new QGridLayout(group);
     layout->setHorizontalSpacing(8);
     layout->setVerticalSpacing(6);
     layout->setColumnStretch(1, 1);
     layout->setColumnStretch(3, 1);
 
-    statusLabel_ = new QLabel(QStringLiteral("Stopped"), group);
-    intervalSummaryLabel_ = new QLabel(group);
-    buttonSummaryLabel_ = new QLabel(group);
-    counterLabel_ = new QLabel(QStringLiteral("0"), group);
-    backendLabel_ = new QLabel(QStringLiteral("Detecting..."), group);
-    backendLabel_->setWordWrap(true);
-    backendLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    ui->statusLabel = new QLabel(QStringLiteral("Stopped"), group);
+    ui->intervalSummaryLabel = new QLabel(group);
+    ui->buttonSummaryLabel = new QLabel(group);
+    ui->counterLabel = new QLabel(QStringLiteral("0"), group);
+    ui->backendLabel = new QLabel(QStringLiteral("Detecting..."), group);
+    ui->backendLabel->setWordWrap(true);
+    ui->backendLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
-    limitationText_ = new QPlainTextEdit(group);
-    limitationText_->setReadOnly(true);
-    limitationText_->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    limitationText_->setMinimumHeight(90);
-    limitationText_->setMaximumHeight(130);
-    limitationText_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    ui->limitationText = new QPlainTextEdit(group);
+    ui->limitationText->setReadOnly(true);
+    ui->limitationText->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    ui->limitationText->setMinimumHeight(90);
+    ui->limitationText->setMaximumHeight(130);
+    ui->limitationText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     layout->addWidget(fieldLabel(QStringLiteral("State:"), group), 0, 0);
-    layout->addWidget(statusLabel_, 0, 1);
+    layout->addWidget(ui->statusLabel, 0, 1);
     layout->addWidget(fieldLabel(QStringLiteral("Clicks"), group), 0, 2);
-    layout->addWidget(counterLabel_, 0, 3);
+    layout->addWidget(ui->counterLabel, 0, 3);
     layout->addWidget(fieldLabel(QStringLiteral("Interval:"), group), 1, 0);
-    layout->addWidget(intervalSummaryLabel_, 1, 1);
+    layout->addWidget(ui->intervalSummaryLabel, 1, 1);
     layout->addWidget(fieldLabel(QStringLiteral("Button"), group), 1, 2);
-    layout->addWidget(buttonSummaryLabel_, 1, 3);
+    layout->addWidget(ui->buttonSummaryLabel, 1, 3);
     layout->addWidget(fieldLabel(QStringLiteral("Backend:"), group), 2, 0);
-    layout->addWidget(backendLabel_, 2, 1, 1, 3);
+    layout->addWidget(ui->backendLabel, 2, 1, 1, 3);
     layout->addWidget(fieldLabel(QStringLiteral("Notes:"), group), 3, 0, Qt::AlignTop);
-    layout->addWidget(limitationText_, 3, 1, 1, 3);
-
+    layout->addWidget(ui->limitationText, 3, 1, 1, 3);
     return group;
 }
 
-
-void MainWindow::connectSignals()
+void MainWindow::connectProfileSignals(ProfileUi* ui)
 {
-    const auto persist = [this]() {
+    const auto persist = [this, ui]() {
+        ui->profile.settings = settingsFromUi(ui);
         persistSettings();
     };
 
-    connect(intervalSpin_, qOverload<int>(&QSpinBox::valueChanged), this, persist);
-    connect(intervalUnitCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
-    connect(buttonCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
-    connect(buttonCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
-        refreshSummary();
+    connect(ui->enabledCheck, &QCheckBox::toggled, this, [this, ui](bool enabled) {
+        ui->profile.enabled = enabled;
+        if (!enabled && ui->engine->isRunning()) {
+            ui->engine->stop();
+        }
+        persistSettings();
+        registerHotkeys();
+        updateTabText(ui);
     });
-    connect(customKeyEdit_, &HotkeyCaptureEdit::hotkeyCaptured, this, [this](const QString&) {
-        validateCustomKey(true);
+    connect(ui->intervalSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
+    connect(ui->intervalUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
+    connect(ui->buttonCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
+    connect(ui->buttonCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this, ui]() {
+        refreshSummary(ui);
+    });
+    connect(ui->customKeyEdit, &HotkeyCaptureEdit::hotkeyCaptured, this, [this, ui](const QString&) {
+        validateCustomKey(ui, true);
+        ui->profile.settings = settingsFromUi(ui);
         persistSettings();
     });
-    connect(customKeyEdit_, &HotkeyCaptureEdit::recordingChanged, this, [this](bool recording) {
+    connect(ui->customKeyEdit, &HotkeyCaptureEdit::recordingChanged, this, [this](bool recording) {
         if (recording) {
             hotkeys_.stop();
+            setFocusedShortcutsEnabled(false);
             return;
         }
-        registerHotkey();
+        registerHotkeys();
     });
-    connect(clickTypeCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
-    connect(infiniteCheck_, &QCheckBox::toggled, this, persist);
-    connect(limitSpin_, qOverload<int>(&QSpinBox::valueChanged), this, persist);
-    connect(randomizeCheck_, &QCheckBox::toggled, this, persist);
-    connect(jitterSpin_, qOverload<int>(&QSpinBox::valueChanged), this, persist);
-    connect(startMinimizedCheck_, &QCheckBox::toggled, this, persist);
-    connect(keepRunningInBackgroundCheck_, &QCheckBox::toggled, this, [this](bool enabled) {
+    connect(ui->clickTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
+    connect(ui->infiniteCheck, &QCheckBox::toggled, this, persist);
+    connect(ui->limitSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
+    connect(ui->randomizeCheck, &QCheckBox::toggled, this, persist);
+    connect(ui->jitterSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
+    connect(ui->startMinimizedCheck, &QCheckBox::toggled, this, [this, ui](bool enabled) {
+        startMinimized_ = enabled;
+        syncGlobalSettings(ui);
+        persistSettings();
+    });
+    connect(ui->keepRunningInBackgroundCheck, &QCheckBox::toggled, this, [this, ui](bool enabled) {
+        keepRunningInBackground_ = enabled;
+        syncGlobalSettings(ui);
         persistSettings();
         if (trayIcon_) {
             trayIcon_->setVisible(enabled);
         }
     });
-    connect(hotkeyEdit_, &HotkeyCaptureEdit::recordingChanged, this, [this](bool recording) {
-        focusedShortcut_->setEnabled(!recording && !focusedShortcut_->key().isEmpty());
+    connect(ui->hotkeyEdit, &HotkeyCaptureEdit::recordingChanged, this, [this, ui](bool recording) {
+        setFocusedShortcutsEnabled(!recording);
         if (recording) {
             hotkeys_.stop();
             return;
         }
 
-        QTimer::singleShot(0, this, [this]() {
-            if (QApplication::focusWidget() != applyHotkeyButton_) {
-                registerHotkey();
+        QTimer::singleShot(0, this, [this, ui]() {
+            if (QApplication::focusWidget() != ui->applyHotkeyButton) {
+                registerHotkeys();
             }
         });
     });
-    connect(hotkeyEdit_, &HotkeyCaptureEdit::hotkeyCaptured, this, [this](const QString& hotkeyText) {
+    connect(ui->hotkeyEdit, &HotkeyCaptureEdit::hotkeyCaptured, this, [this](const QString& hotkeyText) {
         statusBar()->showMessage(QStringLiteral("Pending hotkey: %1. Click Apply to save it.").arg(hotkeyText), 4000);
     });
-    connect(applyHotkeyButton_, &QPushButton::clicked, this, &MainWindow::applyHotkeyFromUi);
-    connect(resetButton_, &QPushButton::clicked, this, &MainWindow::resetToDefaults);
-    connect(donateButton_, &QPushButton::clicked, this, []() {
+    connect(ui->applyHotkeyButton, &QPushButton::clicked, this, [this, ui]() {
+        applyHotkeyFromUi(ui);
+    });
+    connect(ui->resetButton, &QPushButton::clicked, this, [this, ui]() {
+        resetToDefaults(ui);
+    });
+    connect(ui->donateButton, &QPushButton::clicked, this, []() {
         QDesktopServices::openUrl(QUrl(QStringLiteral("https://ko-fi.com/limonyx")));
     });
-
-    connect(focusedShortcut_, &QShortcut::activated, this, &MainWindow::triggerHotkeyToggle);
-    connect(focusedShortcut_, &QShortcut::activatedAmbiguously, this, &MainWindow::triggerHotkeyToggle);
-    connect(startStopButton_, &QPushButton::clicked, this, [this]() {
-        startOrStop(true);
+    connect(ui->startStopButton, &QPushButton::clicked, this, [this, ui]() {
+        startOrStop(ui, true);
     });
 
-    connect(&engine_, &ClickEngine::runningChanged, this, &MainWindow::setRunningUi);
-    connect(&engine_, &ClickEngine::clickCountChanged, this, [this](quint64 count) {
-        counterLabel_->setText(QString::number(count));
+    connect(ui->engine, &ClickEngine::runningChanged, this, [this, ui](bool running) {
+        setRunningUi(ui, running);
+    });
+    connect(ui->engine, &ClickEngine::clickCountChanged, this, [this, ui](quint64 count) {
+        ui->counterLabel->setText(QString::number(count));
         updateTrayState();
     });
-    connect(&engine_, &ClickEngine::backendChanged, this, [this](const QString& name, const QString& details) {
-        backendLabel_->setText(name);
-        limitationText_->setPlainText(details.isEmpty() ? QStringLiteral("Full feature set available.") : details);
+    connect(ui->engine, &ClickEngine::backendChanged, this, [ui](const QString& name, const QString& details) {
+        ui->backendLabel->setText(name);
+        ui->limitationText->setPlainText(details.isEmpty() ? QStringLiteral("Full feature set available.") : details);
     });
-    connect(&engine_, &ClickEngine::errorOccurred, this, [this](const QString& message) {
+    connect(ui->engine, &ClickEngine::errorOccurred, this, [this](const QString& message) {
         statusBar()->showMessage(message, 8000);
         QMessageBox::warning(this, QStringLiteral("Autoclicker error"), message);
     });
-
-    connect(&hotkeys_, &GlobalHotkeyManager::activated, this, &MainWindow::triggerHotkeyToggle);
-    connect(&hotkeys_, &GlobalHotkeyManager::errorOccurred, this, [this](const QString& message) {
-        statusBar()->showMessage(message, 8000);
-        limitationText_->setPlainText(message);
-    });
-    connect(&hotkeys_, &GlobalHotkeyManager::statusChanged, this, [this](const QString& message) {
-        statusBar()->showMessage(message, 5000);
-        limitationText_->setPlainText(message);
-    });
 }
 
-void MainWindow::applySettingsToUi()
+void MainWindow::applyProfileToUi(ProfileUi* ui)
 {
-    loading_ = true;
-
-    intervalSpin_->setValue(settings_.intervalValue);
-    setComboValue(intervalUnitCombo_, static_cast<int>(settings_.intervalUnit));
-    setComboValue(buttonCombo_, static_cast<int>(settings_.mouseButton));
-    setComboValue(clickTypeCombo_, static_cast<int>(settings_.clickType));
-    customKeyEdit_->setText(settings_.customKey);
-    infiniteCheck_->setChecked(settings_.infinite);
-    limitSpin_->setValue(static_cast<int>(std::min<quint64>(settings_.clickLimit, 1000000000ULL)));
-    randomizeCheck_->setChecked(settings_.randomizeInterval);
-    jitterSpin_->setValue(settings_.randomJitterPercent);
-    hotkeyEdit_->setText(settings_.hotkey);
-    startMinimizedCheck_->setChecked(settings_.startMinimized);
-    keepRunningInBackgroundCheck_->setChecked(settings_.keepRunningInBackground);
+    ui->enabledCheck->setChecked(ui->profile.enabled);
+    ui->intervalSpin->setValue(ui->profile.settings.intervalValue);
+    setComboValue(ui->intervalUnitCombo, static_cast<int>(ui->profile.settings.intervalUnit));
+    setComboValue(ui->buttonCombo, static_cast<int>(ui->profile.settings.mouseButton));
+    setComboValue(ui->clickTypeCombo, static_cast<int>(ui->profile.settings.clickType));
+    ui->customKeyEdit->setText(ui->profile.settings.customKey);
+    ui->infiniteCheck->setChecked(ui->profile.settings.infinite);
+    ui->limitSpin->setValue(static_cast<int>(std::min<quint64>(ui->profile.settings.clickLimit, 1000000000ULL)));
+    ui->randomizeCheck->setChecked(ui->profile.settings.randomizeInterval);
+    ui->jitterSpin->setValue(ui->profile.settings.randomJitterPercent);
+    ui->hotkeyEdit->setText(ui->profile.settings.hotkey);
+    ui->startMinimizedCheck->setChecked(startMinimized_);
+    ui->keepRunningInBackgroundCheck->setChecked(keepRunningInBackground_);
     if (trayIcon_) {
-        trayIcon_->setVisible(settings_.keepRunningInBackground);
+        trayIcon_->setVisible(keepRunningInBackground_);
     }
-
-    loading_ = false;
-    refreshSummary();
 }
 
-ClickSettings MainWindow::settingsFromUi() const
+ClickSettings MainWindow::settingsFromUi(const ProfileUi* ui) const
 {
     ClickSettings settings;
-    settings.intervalValue = intervalSpin_->value();
-    settings.intervalUnit = intervalUnitFromInt(comboValue(intervalUnitCombo_));
-    settings.mouseButton = mouseButtonFromInt(comboValue(buttonCombo_));
-    settings.clickType = clickTypeFromInt(comboValue(clickTypeCombo_));
+    settings.intervalValue = ui->intervalSpin->value();
+    settings.intervalUnit = intervalUnitFromInt(comboValue(ui->intervalUnitCombo));
+    settings.mouseButton = mouseButtonFromInt(comboValue(ui->buttonCombo));
+    settings.clickType = clickTypeFromInt(comboValue(ui->clickTypeCombo));
     settings.positionMode = PositionMode::CurrentCursor;
     settings.fixedPosition = QPoint(0, 0);
-    settings.customKey = customKeyEdit_->text().trimmed();
-    settings.infinite = infiniteCheck_->isChecked();
-    settings.clickLimit = static_cast<quint64>(limitSpin_->value());
-    settings.randomizeInterval = randomizeCheck_->isChecked();
-    settings.randomJitterPercent = jitterSpin_->value();
-    settings.hotkey = settings_.hotkey;
-    settings.startMinimized = startMinimizedCheck_->isChecked();
-    settings.keepRunningInBackground = keepRunningInBackgroundCheck_->isChecked();
+    settings.customKey = ui->customKeyEdit->text().trimmed();
+    settings.infinite = ui->infiniteCheck->isChecked();
+    settings.clickLimit = static_cast<quint64>(ui->limitSpin->value());
+    settings.randomizeInterval = ui->randomizeCheck->isChecked();
+    settings.randomJitterPercent = ui->jitterSpin->value();
+    settings.hotkey = ui->profile.settings.hotkey;
+    settings.startMinimized = startMinimized_;
+    settings.keepRunningInBackground = keepRunningInBackground_;
     return settings;
+}
+
+AppSettings MainWindow::appSettingsFromUi() const
+{
+    AppSettings result;
+    result.startMinimized = startMinimized_;
+    result.keepRunningInBackground = keepRunningInBackground_;
+    for (ProfileUi* ui : profiles_) {
+        ClickProfile profile = ui->profile;
+        profile.settings = settingsFromUi(ui);
+        result.profiles.append(profile);
+    }
+    return result;
 }
 
 void MainWindow::persistSettings()
@@ -470,130 +606,174 @@ void MainWindow::persistSettings()
         return;
     }
 
-    settings_ = settingsFromUi();
-    if (settings_.mouseButton == MouseButton::CustomKey && !validateCustomKey(false)) {
-        return;
+    for (ProfileUi* ui : profiles_) {
+        ui->profile.settings = settingsFromUi(ui);
+        if (ui->profile.settings.mouseButton == MouseButton::CustomKey && !validateCustomKey(ui, false)) {
+            return;
+        }
+        refreshSummary(ui);
     }
-    limitSpin_->setEnabled(!settings_.infinite);
-    jitterSpin_->setEnabled(settings_.randomizeInterval);
-    refreshSummary();
 
     QString error;
-    if (!AppConfig::save(settings_, &error)) {
+    if (!AppConfig::saveAppSettings(appSettingsFromUi(), &error)) {
         statusBar()->showMessage(error, 8000);
     }
 }
 
-void MainWindow::refreshSummary()
+void MainWindow::refreshSummary(ProfileUi* ui)
 {
-    const ClickSettings current = settingsFromUi();
-    intervalSummaryLabel_->setText(intervalSummary(current));
+    const ClickSettings current = settingsFromUi(ui);
+    ui->intervalSummaryLabel->setText(intervalSummary(current));
     const bool customKey = current.mouseButton == MouseButton::CustomKey;
-    customKeyLabel_->setVisible(customKey);
-    customKeyEdit_->setEnabled(customKey);
-    customKeyEdit_->setVisible(customKey);
-    buttonSummaryLabel_->setText(customKey
-                                     ? QStringLiteral("key %1").arg(current.customKey)
-                                     : QStringLiteral("%1, %2").arg(mouseButtonToString(current.mouseButton), clickTypeToString(current.clickType)));
-    limitSpin_->setEnabled(!current.infinite);
-    jitterSpin_->setEnabled(current.randomizeInterval);
+    ui->customKeyLabel->setVisible(customKey);
+    ui->customKeyEdit->setEnabled(customKey);
+    ui->customKeyEdit->setVisible(customKey);
+    ui->buttonSummaryLabel->setText(buttonSummary(current));
+    ui->limitSpin->setEnabled(!current.infinite);
+    ui->jitterSpin->setEnabled(current.randomizeInterval);
+    updateTabText(ui);
     updateTrayState();
 }
 
-void MainWindow::refreshBackendCapabilities()
+void MainWindow::refreshAllSummaries()
+{
+    for (ProfileUi* ui : profiles_) {
+        refreshSummary(ui);
+    }
+}
+
+void MainWindow::refreshBackendCapabilities(ProfileUi* ui)
 {
     QString error;
     std::unique_ptr<InputBackend> backend = createInputBackend(&error);
     if (!backend) {
-        backendLabel_->setText(QStringLiteral("Unavailable"));
-        limitationText_->setPlainText(error);
+        ui->backendLabel->setText(QStringLiteral("Unavailable"));
+        ui->limitationText->setPlainText(error);
         return;
     }
 
     if (!backend->initialize(&error)) {
-        backendLabel_->setText(backend->name());
-        limitationText_->setPlainText(error);
+        ui->backendLabel->setText(backend->name());
+        ui->limitationText->setPlainText(error);
         return;
     }
 
     const BackendCapabilities caps = backend->capabilities();
-    backendLabel_->setText(backend->name());
-    limitationText_->setPlainText(caps.limitations.isEmpty() ? QStringLiteral("Full feature set available.") : caps.limitations.join(QStringLiteral("\n")));
+    ui->backendLabel->setText(backend->name());
+    ui->limitationText->setPlainText(caps.limitations.isEmpty() ? QStringLiteral("Full feature set available.") : caps.limitations.join(QStringLiteral("\n")));
 }
 
-void MainWindow::registerHotkey()
+void MainWindow::refreshAllBackendCapabilities()
 {
-    QString error;
-    const auto parsed = parseHotkey(settings_.hotkey, &error);
-    if (!parsed) {
-        focusedShortcut_->setEnabled(false);
-        hotkeys_.stop();
-        limitationText_->setPlainText(error);
+    for (ProfileUi* ui : profiles_) {
+        refreshBackendCapabilities(ui);
+    }
+}
+
+void MainWindow::registerHotkeys()
+{
+    hotkeys_.stop();
+    qDeleteAll(focusedShortcuts_);
+    focusedShortcuts_.clear();
+
+    QStringList hotkeyTexts;
+    for (ProfileUi* ui : profiles_) {
+        if (!ui->profile.enabled) {
+            continue;
+        }
+
+        QString error;
+        const std::optional<Hotkey> parsed = parseHotkey(ui->profile.settings.hotkey, &error);
+        if (!parsed) {
+            ui->limitationText->setPlainText(error);
+            continue;
+        }
+
+        ui->profile.settings.hotkey = parsed->normalized;
+        ui->hotkeyEdit->setText(parsed->normalized);
+        if (!hotkeyTexts.contains(parsed->normalized)) {
+            hotkeyTexts << parsed->normalized;
+            auto* shortcut = new QShortcut(hotkeyToKeySequence(*parsed), this);
+            shortcut->setContext(Qt::ApplicationShortcut);
+            connect(shortcut, &QShortcut::activated, this, [this, normalized = parsed->normalized]() {
+                triggerHotkeyToggle(normalized);
+            });
+            connect(shortcut, &QShortcut::activatedAmbiguously, this, [this, normalized = parsed->normalized]() {
+                triggerHotkeyToggle(normalized);
+            });
+            focusedShortcuts_.append(shortcut);
+        }
+    }
+
+    if (hotkeyTexts.isEmpty()) {
         return;
     }
 
-    settings_.hotkey = parsed->normalized;
-    hotkeyEdit_->setText(settings_.hotkey);
-
-    focusedShortcut_->setKey(hotkeyToKeySequence(*parsed));
-    focusedShortcut_->setEnabled(true);
-    hotkeys_.setHotkeyText(settings_.hotkey);
+    hotkeys_.setHotkeyTexts(hotkeyTexts);
+    updateAllTabTexts();
 }
 
-void MainWindow::applyHotkeyFromUi()
+void MainWindow::applyHotkeyFromUi(ProfileUi* ui)
 {
     QString error;
-    const std::optional<Hotkey> parsed = parseHotkey(hotkeyEdit_->text(), &error);
+    const std::optional<Hotkey> parsed = parseHotkey(ui->hotkeyEdit->text(), &error);
     if (!parsed) {
         statusBar()->showMessage(error, 5000);
         QMessageBox::warning(this, QStringLiteral("Invalid hotkey"), error);
         return;
     }
 
-    settings_.hotkey = parsed->normalized;
-    if (!validateCustomKey(true)) {
+    ui->profile.settings.hotkey = parsed->normalized;
+    if (!validateCustomKey(ui, true)) {
         return;
     }
-    hotkeyEdit_->setText(settings_.hotkey);
+    ui->hotkeyEdit->setText(ui->profile.settings.hotkey);
     persistSettings();
-    registerHotkey();
-    hotkeyEdit_->clearFocus();
+    registerHotkeys();
+    ui->hotkeyEdit->clearFocus();
     setFocus(Qt::OtherFocusReason);
-    statusBar()->showMessage(QStringLiteral("Hotkey applied: %1").arg(settings_.hotkey), 4000);
+    statusBar()->showMessage(QStringLiteral("Hotkey applied: %1").arg(ui->profile.settings.hotkey), 4000);
 }
 
-void MainWindow::resetToDefaults()
+void MainWindow::resetToDefaults(ProfileUi* ui)
 {
-    if (engine_.isRunning()) {
-        engine_.stop();
+    if (ui->engine->isRunning()) {
+        ui->engine->stop();
     }
 
-    settings_ = ClickSettings {};
-    applySettingsToUi();
+    ui->profile = ClickProfile {};
+    loading_ = true;
+    applyProfileToUi(ui);
+    loading_ = false;
+    refreshSummary(ui);
     persistSettings();
-    registerHotkey();
-    hotkeyEdit_->clearFocus();
+    registerHotkeys();
+    ui->hotkeyEdit->clearFocus();
     setFocus(Qt::OtherFocusReason);
-    statusBar()->showMessage(QStringLiteral("Settings reset to defaults."), 4000);
+    statusBar()->showMessage(QStringLiteral("Tab reset to defaults."), 4000);
 }
 
-void MainWindow::startOrStop(bool delayManualStopButton)
+void MainWindow::startOrStop(ProfileUi* ui, bool delayManualStopButton)
 {
     persistSettings();
-    if (settings_.mouseButton == MouseButton::CustomKey && !validateCustomKey(true)) {
+    if (!ui->profile.enabled) {
+        statusBar()->showMessage(QStringLiteral("This tab is disabled."), 4000);
         return;
     }
-    if (engine_.isRunning()) {
-        engine_.stop();
+    if (ui->profile.settings.mouseButton == MouseButton::CustomKey && !validateCustomKey(ui, true)) {
+        return;
+    }
+    if (ui->engine->isRunning()) {
+        ui->engine->stop();
         return;
     }
 
-    engine_.start(settings_);
-    if (delayManualStopButton && engine_.isRunning()) {
-        startStopButton_->setEnabled(false);
-        QTimer::singleShot(1000, this, [this]() {
-            if (engine_.isRunning()) {
-                startStopButton_->setEnabled(true);
+    ui->engine->start(ui->profile.settings);
+    if (delayManualStopButton && ui->engine->isRunning()) {
+        ui->startStopButton->setEnabled(false);
+        QTimer::singleShot(1000, this, [ui]() {
+            if (ui->engine->isRunning()) {
+                ui->startStopButton->setEnabled(true);
             }
         });
     }
@@ -601,24 +781,81 @@ void MainWindow::startOrStop(bool delayManualStopButton)
 
 void MainWindow::triggerHotkeyToggle()
 {
-    if (hotkeyDebounce_.isValid() && hotkeyDebounce_.elapsed() < 250) {
+    QVector<ProfileUi*> targets;
+    for (ProfileUi* ui : profiles_) {
+        if (ui->profile.enabled) {
+            targets.append(ui);
+        }
+    }
+
+    if (targets.isEmpty()) {
         return;
     }
 
-    hotkeyDebounce_.restart();
-    startOrStop(false);
+    if (targets.first()->hotkeyDebounce.isValid() && targets.first()->hotkeyDebounce.elapsed() < 250) {
+        return;
+    }
+    for (ProfileUi* ui : targets) {
+        ui->hotkeyDebounce.restart();
+    }
+
+    const bool shouldStart = std::any_of(targets.begin(), targets.end(), [](const ProfileUi* ui) {
+        return !ui->engine->isRunning();
+    });
+
+    for (ProfileUi* ui : targets) {
+        if (shouldStart) {
+            if (!ui->engine->isRunning()) {
+                startOrStop(ui, false);
+            }
+        } else {
+            ui->engine->stop();
+        }
+    }
 }
 
-void MainWindow::setRunningUi(bool running)
+void MainWindow::triggerHotkeyToggle(const QString& hotkeyText)
+{
+    QString error;
+    const std::optional<Hotkey> parsed = parseHotkey(hotkeyText, &error);
+    const QString normalized = parsed ? parsed->normalized : hotkeyText.trimmed();
+    QVector<ProfileUi*> targets = profilesForHotkey(normalized);
+    if (targets.isEmpty()) {
+        return;
+    }
+
+    if (targets.first()->hotkeyDebounce.isValid() && targets.first()->hotkeyDebounce.elapsed() < 250) {
+        return;
+    }
+    for (ProfileUi* ui : targets) {
+        ui->hotkeyDebounce.restart();
+    }
+
+    const bool shouldStart = std::any_of(targets.begin(), targets.end(), [](const ProfileUi* ui) {
+        return !ui->engine->isRunning();
+    });
+
+    for (ProfileUi* ui : targets) {
+        if (shouldStart) {
+            if (!ui->engine->isRunning()) {
+                startOrStop(ui, false);
+            }
+        } else {
+            ui->engine->stop();
+        }
+    }
+}
+
+void MainWindow::setRunningUi(ProfileUi* ui, bool running)
 {
     if (running) {
-        statusLabel_->setText(QStringLiteral("Running"));
-        startStopButton_->setText(QStringLiteral("Stop"));
-        startStopButton_->setEnabled(true);
+        ui->statusLabel->setText(QStringLiteral("Running"));
+        ui->startStopButton->setText(QStringLiteral("Stop"));
+        ui->startStopButton->setEnabled(true);
     } else {
-        statusLabel_->setText(QStringLiteral("Stopped"));
-        startStopButton_->setText(QStringLiteral("Start clicking"));
-        startStopButton_->setEnabled(true);
+        ui->statusLabel->setText(QStringLiteral("Stopped"));
+        ui->startStopButton->setText(QStringLiteral("Start clicking"));
+        ui->startStopButton->setEnabled(true);
     }
     statusBar()->showMessage(running ? QStringLiteral("Running") : QStringLiteral("Stopped"), 3000);
     updateTrayState();
@@ -641,14 +878,14 @@ void MainWindow::setupTray()
         activateWindow();
     });
     connect(toggleAction, &QAction::triggered, this, [this]() {
-        startOrStop(false);
+        triggerHotkeyToggle();
     });
     connect(quitAction, &QAction::triggered, this, [this]() {
-        settings_.keepRunningInBackground = false;
-        if (keepRunningInBackgroundCheck_) {
-            keepRunningInBackgroundCheck_->setChecked(false);
+        keepRunningInBackground_ = false;
+        syncGlobalSettings(nullptr);
+        for (ProfileUi* ui : profiles_) {
+            ui->engine->stop();
         }
-        engine_.stop();
         hotkeys_.stop();
         qApp->quit();
     });
@@ -669,26 +906,220 @@ void MainWindow::updateTrayState()
         return;
     }
 
-    trayIcon_->setToolTip(QStringLiteral("Omni Clicker - %1 - %2 clicks")
-                              .arg(engine_.isRunning() ? QStringLiteral("Running") : QStringLiteral("Stopped"))
-                              .arg(engine_.clickCount()));
+    quint64 totalClicks = 0;
+    int runningCount = 0;
+    for (const ProfileUi* ui : profiles_) {
+        totalClicks += ui->engine->clickCount();
+        if (ui->engine->isRunning()) {
+            ++runningCount;
+        }
+    }
+
+    trayIcon_->setToolTip(QStringLiteral("Omni Clicker - %1 active - %2 clicks")
+                              .arg(runningCount)
+                              .arg(totalClicks));
 
     if (QMenu* menu = trayIcon_->contextMenu()) {
         const QList<QAction*> actions = menu->actions();
         if (actions.size() >= 2) {
-            actions.at(1)->setText(engine_.isRunning() ? QStringLiteral("Stop clicking") : QStringLiteral("Start clicking"));
+            actions.at(1)->setText(runningCount > 0 ? QStringLiteral("Stop clicking") : QStringLiteral("Start clicking"));
         }
     }
 }
 
-bool MainWindow::validateCustomKey(bool interactive)
+void MainWindow::updateTabText(ProfileUi* ui)
 {
-    if (!buttonCombo_ || mouseButtonFromInt(comboValue(buttonCombo_)) != MouseButton::CustomKey) {
+    const int index = tabs_->indexOf(ui->page);
+    if (index < 0) {
+        return;
+    }
+
+    const ClickSettings settings = settingsFromUi(ui);
+    const int addButtonWidth = profiles_.size() < MaximumProfiles ? addTabButton_->width() + 10 : 0;
+    const int availableWidth = tabs_->tabBar()->width() - addButtonWidth;
+    const int tabWidth = availableWidth / std::max(1, tabs_->count());
+    QString text;
+    if (tabWidth < 80) {
+        text = settings.hotkey;
+    } else if (tabWidth < 125) {
+        text = QStringLiteral("%1 | %2").arg(settings.hotkey, tabIntervalSummary(settings));
+    } else if (tabWidth < 175) {
+        const QString button = settings.mouseButton == MouseButton::CustomKey
+            ? QStringLiteral("key")
+            : mouseButtonToString(settings.mouseButton).left(1).toUpper();
+        text = QStringLiteral("%1 | %2 | %3").arg(settings.hotkey, button, tabIntervalSummary(settings));
+    } else {
+        text = tabSummary(settings);
+    }
+    if (!ui->profile.enabled) {
+        text.prepend(QStringLiteral("Off | "));
+    }
+    tabs_->setTabText(index, text);
+}
+
+void MainWindow::updateAllTabTexts()
+{
+    for (ProfileUi* ui : profiles_) {
+        updateTabText(ui);
+    }
+}
+
+void MainWindow::updateTabCloseButtons()
+{
+    if (!tabs_) {
+        return;
+    }
+
+    QTabBar* tabBar = tabs_->tabBar();
+    const bool canClose = profiles_.size() > 1;
+    for (int index = 0; index < tabs_->count(); ++index) {
+        auto* closeButton = qobject_cast<QToolButton*>(tabBar->tabButton(index, QTabBar::RightSide));
+        if (!closeButton) {
+            closeButton = new QToolButton(tabBar);
+            closeButton->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+            closeButton->setToolTip(QStringLiteral("Close tab"));
+            closeButton->setAutoRaise(true);
+            closeButton->setFixedSize(20, 20);
+            closeButton->setStyleSheet(QStringLiteral(
+                "QToolButton { border: 0; border-radius: 10px; padding: 0; }"
+                "QToolButton:hover { background-color: palette(midlight); }"));
+            tabBar->setTabButton(index, QTabBar::RightSide, closeButton);
+            connect(closeButton, &QToolButton::clicked, this, [this, closeButton]() {
+                const int tabIndex = tabs_->tabBar()->tabAt(closeButton->geometry().center());
+                if (tabIndex >= 0) {
+                    QWidget* page = tabs_->widget(tabIndex);
+                    for (ProfileUi* ui : profiles_) {
+                        if (ui->page == page) {
+                            removeProfile(ui);
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+        closeButton->setVisible(canClose && (index == tabs_->currentIndex() || index == hoveredTabIndex_));
+    }
+
+    positionAddTabButton();
+}
+
+void MainWindow::updateTabSizing()
+{
+    if (!tabs_ || !addTabButton_ || tabs_->count() == 0) {
+        return;
+    }
+
+    QTabBar* tabBar = tabs_->tabBar();
+    if (tabBar->width() <= 0) {
+        return;
+    }
+
+    const int addButtonWidth = profiles_.size() < MaximumProfiles ? addTabButton_->width() + 10 : 0;
+    const int availableWidth = std::max(52, tabBar->width() - addButtonWidth);
+    const int tabWidth = std::clamp(availableWidth / tabs_->count(), 52, 220);
+    if (tabWidth != tabWidth_) {
+        tabWidth_ = tabWidth;
+        tabBar->setStyleSheet(QStringLiteral(
+            "QTabBar::tab { width: %1px; }"
+            "QTabBar::tab:hover { background-color: palette(midlight); }").arg(tabWidth));
+    }
+    updateAllTabTexts();
+    QTimer::singleShot(0, this, &MainWindow::positionAddTabButton);
+}
+
+void MainWindow::positionAddTabButton()
+{
+    if (!tabs_ || !addTabButton_ || tabs_->count() == 0 || profiles_.size() >= MaximumProfiles) {
+        return;
+    }
+
+    QTabBar* tabBar = tabs_->tabBar();
+    QRect lastTab;
+    for (int index = 0; index < tabs_->count(); ++index) {
+        const QRect tabRect = tabBar->tabRect(index);
+        if (tabRect.right() > lastTab.right()) {
+            lastTab = tabRect;
+        }
+    }
+    const int x = std::min(lastTab.right() + 5, tabBar->width() - addTabButton_->width());
+    const int y = std::max(0, (tabBar->height() - addTabButton_->height()) / 2);
+    addTabButton_->move(std::max(0, x), y);
+}
+
+void MainWindow::setFocusedShortcutsEnabled(bool enabled)
+{
+    for (QShortcut* shortcut : focusedShortcuts_) {
+        shortcut->setEnabled(enabled);
+    }
+}
+
+void MainWindow::syncGlobalSettings(ProfileUi* source)
+{
+    const bool wasLoading = loading_;
+    loading_ = true;
+    for (ProfileUi* ui : profiles_) {
+        if (ui == source) {
+            continue;
+        }
+        ui->startMinimizedCheck->setChecked(startMinimized_);
+        ui->keepRunningInBackgroundCheck->setChecked(keepRunningInBackground_);
+    }
+    loading_ = wasLoading;
+}
+
+void MainWindow::createNewProfile()
+{
+    if (profiles_.size() >= MaximumProfiles) {
+        return;
+    }
+
+    ClickProfile profile;
+    profile.settings.startMinimized = startMinimized_;
+    profile.settings.keepRunningInBackground = keepRunningInBackground_;
+    ProfileUi* ui = addProfile(profile, true);
+    refreshSummary(ui);
+    refreshBackendCapabilities(ui);
+    persistSettings();
+    registerHotkeys();
+}
+
+void MainWindow::removeCurrentProfile()
+{
+    removeProfile(currentProfile());
+}
+
+void MainWindow::removeProfile(ProfileUi* ui)
+{
+    if (profiles_.size() <= 1 || !ui) {
+        return;
+    }
+
+    ui->engine->stop();
+    const int index = tabs_->indexOf(ui->page);
+    if (index >= 0) {
+        tabs_->removeTab(index);
+    }
+    profiles_.removeOne(ui);
+    hoveredTabIndex_ = -1;
+    ui->page->deleteLater();
+    ui->engine->deleteLater();
+    delete ui;
+    persistSettings();
+    registerHotkeys();
+    updateTabCloseButtons();
+    addTabButton_->setVisible(true);
+    updateTabSizing();
+}
+
+bool MainWindow::validateCustomKey(ProfileUi* ui, bool interactive)
+{
+    if (!ui->buttonCombo || mouseButtonFromInt(comboValue(ui->buttonCombo)) != MouseButton::CustomKey) {
         return true;
     }
 
     QString error;
-    const std::optional<Hotkey> custom = parseHotkey(customKeyEdit_->text(), &error);
+    const std::optional<Hotkey> custom = parseHotkey(ui->customKeyEdit->text(), &error);
     if (!custom) {
         if (interactive) {
             QMessageBox::warning(this, QStringLiteral("Invalid custom key"), error);
@@ -697,7 +1128,7 @@ bool MainWindow::validateCustomKey(bool interactive)
         return false;
     }
 
-    const std::optional<Hotkey> toggle = parseHotkey(settings_.hotkey, nullptr);
+    const std::optional<Hotkey> toggle = parseHotkey(ui->profile.settings.hotkey, nullptr);
     if (toggle && custom->normalized == toggle->normalized) {
         const QString message = QStringLiteral("The custom key cannot be the same as the activation hotkey. Choose a different key.");
         if (interactive) {
@@ -707,8 +1138,58 @@ bool MainWindow::validateCustomKey(bool interactive)
         return false;
     }
 
-    if (customKeyEdit_->text() != custom->normalized) {
-        customKeyEdit_->setText(custom->normalized);
+    if (ui->customKeyEdit->text() != custom->normalized) {
+        ui->customKeyEdit->setText(custom->normalized);
     }
     return true;
+}
+
+MainWindow::ProfileUi* MainWindow::currentProfile() const
+{
+    const int index = tabs_ ? tabs_->currentIndex() : -1;
+    if (index < 0 || index >= profiles_.size()) {
+        return nullptr;
+    }
+    QWidget* page = tabs_->widget(index);
+    for (ProfileUi* ui : profiles_) {
+        if (ui->page == page) {
+            return ui;
+        }
+    }
+    return nullptr;
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    if (tabs_ && watched == tabs_->tabBar()) {
+        if (event->type() == QEvent::MouseMove) {
+            const auto* mouseEvent = static_cast<QMouseEvent*>(event);
+            const int hoveredIndex = tabs_->tabBar()->tabAt(mouseEvent->pos());
+            if (hoveredTabIndex_ != hoveredIndex) {
+                hoveredTabIndex_ = hoveredIndex;
+                updateTabCloseButtons();
+            }
+        } else if (event->type() == QEvent::Leave && hoveredTabIndex_ != -1) {
+            hoveredTabIndex_ = -1;
+            updateTabCloseButtons();
+        } else if (event->type() == QEvent::Resize) {
+            updateTabSizing();
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
+QVector<MainWindow::ProfileUi*> MainWindow::profilesForHotkey(const QString& hotkeyText) const
+{
+    QVector<ProfileUi*> result;
+    for (ProfileUi* ui : profiles_) {
+        if (!ui->profile.enabled) {
+            continue;
+        }
+        if (ui->profile.settings.hotkey == hotkeyText) {
+            result.append(ui);
+        }
+    }
+    return result;
 }

@@ -175,8 +175,9 @@ QString PortalHotkeyBackend::name() const
     return QStringLiteral("xdg-desktop-portal GlobalShortcuts");
 }
 
-bool PortalHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool PortalHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
+    Q_UNUSED(activationId)
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] PortalHotkeyBackend::start()";
     stop();
 

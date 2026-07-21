@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStringList>
+#include <QUrl>
 #include <QFile>
 
 Q_LOGGING_CATEGORY(lcSwayHotkey, "omniclicker.hotkey.sway")
@@ -72,7 +73,7 @@ QString SwayHotkeyBackend::name() const
     return QStringLiteral("Sway IPC (bindsym)");
 }
 
-bool SwayHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool SwayHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
     callback_ = std::move(callback);
@@ -88,7 +89,8 @@ bool SwayHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* 
     }
 
     // Use swaymsg to bind the key at runtime via IPC — no config files needed.
-    const QString cmd = QStringLiteral("bindsym %1 exec \"%2\" --toggle").arg(bindStr, exe);
+    const QString encodedActivationId = QString::fromLatin1(QUrl::toPercentEncoding(activationId));
+    const QString cmd = QStringLiteral("bindsym %1 exec \"%2\" --toggle-id \"%3\"").arg(bindStr, exe, encodedActivationId);
 
     QString swayError;
     if (!runSwaymsg(cmd, &swayError)) {

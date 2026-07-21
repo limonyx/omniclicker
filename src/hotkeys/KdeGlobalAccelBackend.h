@@ -14,7 +14,7 @@ public:
     ~KdeGlobalAccelBackend() override;
 
     QString name() const override;
-    bool start(const Hotkey& hotkey, Callback callback, QString* error) override;
+    bool start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error) override;
     void stop() override;
     QString limitation() const override;
 

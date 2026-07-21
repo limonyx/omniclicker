@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStringList>
+#include <QUrl>
 #include <QFile>
 
 Q_LOGGING_CATEGORY(lcHyprlandHotkey, "omniclicker.hotkey.hyprland")
@@ -91,7 +92,7 @@ QString HyprlandHotkeyBackend::name() const
     return QStringLiteral("Hyprland IPC (hyprctl)");
 }
 
-bool HyprlandHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QString* error)
+bool HyprlandHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
     callback_ = std::move(callback);
@@ -109,8 +110,9 @@ bool HyprlandHotkeyBackend::start(const Hotkey& hotkey, Callback callback, QStri
 
     // hyprctl keyword bind "MODS, KEY, exec, COMMAND"
     // Format: modifiers, key, dispatcher, params
-    const QString bindValue = QStringLiteral("%1, %2, exec, %3 --toggle")
-                                  .arg(modStr, keyStr, exe);
+    const QString encodedActivationId = QString::fromLatin1(QUrl::toPercentEncoding(activationId));
+    const QString bindValue = QStringLiteral("%1, %2, exec, %3 --toggle-id \"%4\"")
+                                  .arg(modStr, keyStr, exe, encodedActivationId);
 
     QString hyprError;
     if (!runHyprctl({ QStringLiteral("keyword"), QStringLiteral("bind"), bindValue }, &hyprError)) {

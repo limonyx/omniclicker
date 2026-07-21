@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QUrl>
 #include <QTimer>
 #include <QLocalSocket>
 #include <QLocalServer>
@@ -27,13 +28,17 @@ int main(int argc, char* argv[])
     parser.addOption(minimizedOption);
     QCommandLineOption toggleOption(QStringLiteral("toggle"), QStringLiteral("Toggle autoclicking if already running."));
     parser.addOption(toggleOption);
+    QCommandLineOption toggleIdOption(QStringLiteral("toggle-id"), QStringLiteral("Toggle autoclicking tabs that use the given hotkey."), QStringLiteral("hotkey"));
+    parser.addOption(toggleIdOption);
     parser.process(app);
 
     const QString serverName = QStringLiteral("omniclicker-single-instance");
     QLocalSocket socket;
     socket.connectToServer(serverName);
     if (socket.waitForConnected(500)) {
-        if (parser.isSet(toggleOption)) {
+        if (parser.isSet(toggleIdOption)) {
+            socket.write(QStringLiteral("TOGGLE_ID:%1").arg(QUrl::fromPercentEncoding(parser.value(toggleIdOption).toUtf8())).toUtf8());
+        } else if (parser.isSet(toggleOption)) {
             socket.write("TOGGLE");
         } else {
             socket.write("WAKEUP");
@@ -59,6 +64,8 @@ int main(int argc, char* argv[])
                 window.activateWindow();
             } else if (data == "TOGGLE") {
                 window.triggerHotkeyToggle();
+            } else if (data.startsWith("TOGGLE_ID:")) {
+                window.triggerHotkeyToggle(QString::fromUtf8(data.mid(10)));
             }
         });
         QObject::connect(client, &QLocalSocket::disconnected, client, &QObject::deleteLater);
@@ -72,7 +79,9 @@ int main(int argc, char* argv[])
         });
     }
 
-    if (parser.isSet(toggleOption)) {
+    if (parser.isSet(toggleIdOption)) {
+        window.triggerHotkeyToggle(QUrl::fromPercentEncoding(parser.value(toggleIdOption).toUtf8()));
+    } else if (parser.isSet(toggleOption)) {
         window.triggerHotkeyToggle();
     }
 
