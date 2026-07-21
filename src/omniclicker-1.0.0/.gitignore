@@ -22,6 +22,3 @@ test_evdev.py
 .codex/
 tools/
 packaging/
-ARCHITECTURE.md
-.flatpak-builder/
-pkg/
