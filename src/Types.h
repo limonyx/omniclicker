@@ -8,6 +8,7 @@ enum class IntervalUnit {
     Milliseconds = 0,
     Seconds = 1,
     Minutes = 2,
+    Hours = 3,
 };
 
 enum class MouseButton {

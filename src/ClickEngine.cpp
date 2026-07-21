@@ -5,6 +5,7 @@
 #include <QRandomGenerator>
 
 #include <algorithm>
+#include <limits>
 #include <chrono>
 #include <thread>
 
@@ -170,8 +171,12 @@ int ClickEngine::nextIntervalMs(const ClickSettings& settings) const
         return base;
     }
 
-    const int jitter = std::max(1, (base * std::clamp(settings.randomJitterPercent, 0, 95)) / 100);
-    const int low = std::max(1, base - jitter);
-    const int high = std::max(low, base + jitter);
-    return QRandomGenerator::global()->bounded(low, high + 1);
+    const qint64 jitter = std::max<qint64>(1,
+        (static_cast<qint64>(base) * std::clamp(settings.randomJitterPercent, 0, 95)) / 100);
+    const int low = static_cast<int>(std::max<qint64>(1, static_cast<qint64>(base) - jitter));
+    const int high = static_cast<int>(std::min<qint64>(std::numeric_limits<int>::max(),
+                                                       static_cast<qint64>(base) + jitter));
+    return high == std::numeric_limits<int>::max()
+        ? QRandomGenerator::global()->bounded(low, high)
+        : QRandomGenerator::global()->bounded(low, high + 1);
 }

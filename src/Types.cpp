@@ -1,21 +1,29 @@
 #include "Types.h"
 
 #include <algorithm>
+#include <limits>
 
 int ClickSettings::intervalMilliseconds() const
 {
     const int safeValue = std::max(1, intervalValue);
 
+    qint64 multiplier = 1;
     switch (intervalUnit) {
     case IntervalUnit::Milliseconds:
-        return safeValue;
+        break;
     case IntervalUnit::Seconds:
-        return safeValue * 1000;
+        multiplier = 1000;
+        break;
     case IntervalUnit::Minutes:
-        return safeValue * 60 * 1000;
+        multiplier = 60 * 1000;
+        break;
+    case IntervalUnit::Hours:
+        multiplier = 60 * 60 * 1000;
+        break;
     }
 
-    return safeValue;
+    return static_cast<int>(std::min<qint64>(static_cast<qint64>(safeValue) * multiplier,
+                                              std::numeric_limits<int>::max()));
 }
 
 QString intervalUnitToString(IntervalUnit unit)
@@ -27,6 +35,8 @@ QString intervalUnitToString(IntervalUnit unit)
         return QStringLiteral("seconds");
     case IntervalUnit::Minutes:
         return QStringLiteral("minutes");
+    case IntervalUnit::Hours:
+        return QStringLiteral("hours");
     }
 
     return QStringLiteral("milliseconds");
@@ -79,6 +89,8 @@ IntervalUnit intervalUnitFromInt(int value)
         return IntervalUnit::Seconds;
     case 2:
         return IntervalUnit::Minutes;
+    case 3:
+        return IntervalUnit::Hours;
     default:
         return IntervalUnit::Milliseconds;
     }

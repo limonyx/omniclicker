@@ -44,10 +44,27 @@
 #endif
 
 #include <algorithm>
+#include <limits>
 
 namespace {
 
 constexpr int MaximumProfiles = 8;
+
+int maximumIntervalValue(IntervalUnit unit)
+{
+    switch (unit) {
+    case IntervalUnit::Milliseconds:
+        return 999999;
+    case IntervalUnit::Seconds:
+        return std::numeric_limits<int>::max() / 1000;
+    case IntervalUnit::Minutes:
+        return std::numeric_limits<int>::max() / (60 * 1000);
+    case IntervalUnit::Hours:
+        return std::numeric_limits<int>::max() / (60 * 60 * 1000);
+    }
+
+    return 999999;
+}
 
 void addComboItem(QComboBox* combo, const QString& label, int value)
 {
@@ -91,6 +108,9 @@ QString tabIntervalSummary(const ClickSettings& settings)
         break;
     case IntervalUnit::Minutes:
         unit = QStringLiteral("min");
+        break;
+    case IntervalUnit::Hours:
+        unit = QStringLiteral("h");
         break;
     }
     return QStringLiteral("%1 %2").arg(settings.intervalValue).arg(unit);
@@ -327,6 +347,7 @@ QGroupBox* MainWindow::createClickOptionsGroup(ProfileUi* ui)
     addComboItem(ui->intervalUnitCombo, QStringLiteral("milliseconds"), static_cast<int>(IntervalUnit::Milliseconds));
     addComboItem(ui->intervalUnitCombo, QStringLiteral("seconds"), static_cast<int>(IntervalUnit::Seconds));
     addComboItem(ui->intervalUnitCombo, QStringLiteral("minutes"), static_cast<int>(IntervalUnit::Minutes));
+    addComboItem(ui->intervalUnitCombo, QStringLiteral("hours"), static_cast<int>(IntervalUnit::Hours));
 
     layout->addWidget(fieldLabel(QStringLiteral("Interval"), group), 0, 0);
     layout->addWidget(ui->intervalSpin, 0, 1);
@@ -464,6 +485,9 @@ void MainWindow::connectProfileSignals(ProfileUi* ui)
         registerHotkeys();
         updateTabText(ui);
     });
+    connect(ui->intervalUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [ui]() {
+        ui->intervalSpin->setMaximum(maximumIntervalValue(intervalUnitFromInt(comboValue(ui->intervalUnitCombo))));
+    });
     connect(ui->intervalSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
     connect(ui->intervalUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
     connect(ui->buttonCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
@@ -550,8 +574,9 @@ void MainWindow::connectProfileSignals(ProfileUi* ui)
 void MainWindow::applyProfileToUi(ProfileUi* ui)
 {
     ui->enabledCheck->setChecked(ui->profile.enabled);
-    ui->intervalSpin->setValue(ui->profile.settings.intervalValue);
     setComboValue(ui->intervalUnitCombo, static_cast<int>(ui->profile.settings.intervalUnit));
+    ui->intervalSpin->setMaximum(maximumIntervalValue(ui->profile.settings.intervalUnit));
+    ui->intervalSpin->setValue(ui->profile.settings.intervalValue);
     setComboValue(ui->buttonCombo, static_cast<int>(ui->profile.settings.mouseButton));
     setComboValue(ui->clickTypeCombo, static_cast<int>(ui->profile.settings.clickType));
     ui->customKeyEdit->setText(ui->profile.settings.customKey);
