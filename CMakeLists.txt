@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(omniclicker
-    VERSION 1.1.1
+    VERSION 1.1.3
     DESCRIPTION "Native Linux autoclicker inspired by OP Auto Clicker"
     HOMEPAGE_URL "https://github.com/limonyx/omniclicker"
     LANGUAGES CXX)
@@ -96,5 +96,5 @@ install(FILES data/io.github.omniclicker.desktop DESTINATION share/applications)
 install(FILES data/io.github.omniclicker.metainfo.xml DESTINATION share/metainfo)
 install(FILES data/io.github.omniclicker.png DESTINATION share/icons/hicolor/512x512/apps)
 install(FILES data/io.github.omniclicker.png DESTINATION share/pixmaps)
-install(FILES data/99-omniclicker-uinput.rules DESTINATION lib/udev/rules.d)
+install(FILES data/40-omniclicker-uinput.rules DESTINATION lib/udev/rules.d)
 install(FILES data/omniclicker-uinput.conf DESTINATION lib/modules-load.d)

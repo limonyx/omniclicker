@@ -33,4 +33,4 @@ modules:
     sources:
       - type: git
         url: https://github.com/limonyx/omniclicker.git
-        tag: v1.1.1
+        tag: v1.1.3
