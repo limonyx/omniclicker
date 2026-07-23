@@ -26,6 +26,7 @@ The goal is simple: install it, choose your settings, and start clicking.
 * Left, right and scroll wheel mouse click support + custom keys 
 * Global shortcut/hotkey support
 * Run in background support
+* Multiple clicking profiles
 * Clean and simple Qt6 interface
 * No Electron or web technologies
 
@@ -88,18 +89,6 @@ cmake --build build
 ```bash
 cmake --install build
 ```
-
-## Supported Desktop Environments
-
-| Environment        | Support |
-| ------------------ | ------- |
-| X11                | yes     |
-| KDE Plasma Wayland | yes     |
-| GNOME Wayland      | yes     |
-| Sway               | yes     |
-| Hyprland           | yes     |
-| Niri               | Planned |
-| COSMIC             | Planned |
 
 ## Contributing
 
