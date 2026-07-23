@@ -32,6 +32,14 @@ The goal is simple: install it, choose your settings, and start clicking.
 
 ## Installation
 
+### Install from AUR for Arch linux
+
+yay -S omniclicker
+
+#### or 
+
+paru -S omniclicker
+
 ### Build from source
 
 #### Dependencies
