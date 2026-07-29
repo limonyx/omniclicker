@@ -137,6 +137,14 @@ bool fakeKey(Display* display, KeySym sym, bool press, QString* error)
     return true;
 }
 
+void holdIfRequested(const ClickSettings& settings)
+{
+    const int holdMs = settings.holdMilliseconds();
+    if (holdMs > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(holdMs));
+    }
+}
+
 } // namespace
 
 X11Backend::~X11Backend()
@@ -219,7 +227,12 @@ bool X11Backend::click(const ClickSettings& settings, QString* error)
                     return false;
                 }
             }
-            if (!fakeKey(display_, keySym, true, error) || !fakeKey(display_, keySym, false, error)) {
+            if (!fakeKey(display_, keySym, true, error)) {
+                return false;
+            }
+            XFlush(display_);
+            holdIfRequested(settings);
+            if (!fakeKey(display_, keySym, false, error)) {
                 return false;
             }
             for (auto it = modifiers.rbegin(); it != modifiers.rend(); ++it) {
@@ -251,6 +264,9 @@ bool X11Backend::click(const ClickSettings& settings, QString* error)
             }
             return false;
         }
+
+        XFlush(display_);
+        holdIfRequested(settings);
 
         if (!XTestFakeButtonEvent(display_, button, False, CurrentTime)) {
             if (error) {

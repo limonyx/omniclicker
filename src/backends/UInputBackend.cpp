@@ -185,6 +185,14 @@ QString errnoMessage(const QString& context)
     return QStringLiteral("%1: %2").arg(context, QString::fromLocal8Bit(std::strerror(errno)));
 }
 
+void holdIfRequested(const ClickSettings& settings)
+{
+    const int holdMs = settings.holdMilliseconds();
+    if (holdMs > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(holdMs));
+    }
+}
+
 } // namespace
 
 UInputBackend::~UInputBackend()
@@ -300,8 +308,11 @@ bool UInputBackend::click(const ClickSettings& settings, QString* error)
                 }
             }
 
-            if (!emitEvent(EV_KEY, static_cast<unsigned short>(*code), 1, error) || !sync(error)
-                || !emitEvent(EV_KEY, static_cast<unsigned short>(*code), 0, error) || !sync(error)) {
+            if (!emitEvent(EV_KEY, static_cast<unsigned short>(*code), 1, error) || !sync(error)) {
+                return false;
+            }
+            holdIfRequested(settings);
+            if (!emitEvent(EV_KEY, static_cast<unsigned short>(*code), 0, error) || !sync(error)) {
                 return false;
             }
 
@@ -321,8 +332,11 @@ bool UInputBackend::click(const ClickSettings& settings, QString* error)
 
     const int button = uinputButton(settings.mouseButton);
     for (int i = 0; i < repetitions; ++i) {
-        if (!emitEvent(EV_KEY, button, 1, error) || !sync(error)
-            || !emitEvent(EV_KEY, button, 0, error) || !sync(error)) {
+        if (!emitEvent(EV_KEY, button, 1, error) || !sync(error)) {
+            return false;
+        }
+        holdIfRequested(settings);
+        if (!emitEvent(EV_KEY, button, 0, error) || !sync(error)) {
             return false;
         }
 

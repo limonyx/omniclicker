@@ -3,12 +3,13 @@
 #include <algorithm>
 #include <limits>
 
-int ClickSettings::intervalMilliseconds() const
-{
-    const int safeValue = std::max(1, intervalValue);
+namespace {
 
+int durationMilliseconds(int value, IntervalUnit unit)
+{
+    const int safeValue = std::max(1, value);
     qint64 multiplier = 1;
-    switch (intervalUnit) {
+    switch (unit) {
     case IntervalUnit::Milliseconds:
         break;
     case IntervalUnit::Seconds:
@@ -24,6 +25,18 @@ int ClickSettings::intervalMilliseconds() const
 
     return static_cast<int>(std::min<qint64>(static_cast<qint64>(safeValue) * multiplier,
                                               std::numeric_limits<int>::max()));
+}
+
+} // namespace
+
+int ClickSettings::intervalMilliseconds() const
+{
+    return durationMilliseconds(intervalValue, intervalUnit);
+}
+
+int ClickSettings::holdMilliseconds() const
+{
+    return holdEnabled ? durationMilliseconds(holdValue, holdUnit) : 0;
 }
 
 QString intervalUnitToString(IntervalUnit unit)

@@ -22,11 +22,12 @@ The goal is simple: install it, choose your settings, and start clicking.
     * GNOME
     * Sway
     * Hyprland
-* Configurable click interval + randomization(optional)
+* Configurable click interval and randomization(optional)
 * Left, right and scroll wheel mouse click support + custom keys 
 * Global shortcut/hotkey support
 * Run in background support
 * Multiple clicking profiles
+* Hold click/key option
 * Clean and simple Qt6 interface
 * No Electron or web technologies
 

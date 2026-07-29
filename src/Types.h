@@ -36,6 +36,9 @@ struct ClickSettings {
     PositionMode positionMode = PositionMode::CurrentCursor;
     QPoint fixedPosition = QPoint(0, 0);
     QString customKey = QStringLiteral("Space");
+    bool holdEnabled = false;
+    int holdValue = 100;
+    IntervalUnit holdUnit = IntervalUnit::Milliseconds;
     bool infinite = true;
     quint64 clickLimit = 100;
     bool randomizeInterval = false;
@@ -45,6 +48,7 @@ struct ClickSettings {
     bool keepRunningInBackground = false;
 
     int intervalMilliseconds() const;
+    int holdMilliseconds() const;
 };
 
 QString intervalUnitToString(IntervalUnit unit);

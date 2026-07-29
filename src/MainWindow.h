@@ -58,6 +58,9 @@ private:
         QLabel* customKeyLabel = nullptr;
         HotkeyCaptureEdit* customKeyEdit = nullptr;
         QComboBox* clickTypeCombo = nullptr;
+        QCheckBox* holdCheck = nullptr;
+        QSpinBox* holdSpin = nullptr;
+        QComboBox* holdUnitCombo = nullptr;
         QCheckBox* infiniteCheck = nullptr;
         QSpinBox* limitSpin = nullptr;
         QCheckBox* randomizeCheck = nullptr;

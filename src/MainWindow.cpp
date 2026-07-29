@@ -376,22 +376,35 @@ QGroupBox* MainWindow::createClickOptionsGroup(ProfileUi* ui)
     layout->addWidget(ui->customKeyLabel, 2, 0);
     layout->addWidget(ui->customKeyEdit, 2, 1, 1, 3);
 
+    ui->holdCheck = new QCheckBox(QStringLiteral("Hold"), group);
+    ui->holdSpin = new QSpinBox(group);
+    ui->holdSpin->setRange(1, 999999);
+    ui->holdSpin->setMinimumWidth(92);
+    ui->holdUnitCombo = new QComboBox(group);
+    addComboItem(ui->holdUnitCombo, QStringLiteral("milliseconds"), static_cast<int>(IntervalUnit::Milliseconds));
+    addComboItem(ui->holdUnitCombo, QStringLiteral("seconds"), static_cast<int>(IntervalUnit::Seconds));
+    addComboItem(ui->holdUnitCombo, QStringLiteral("minutes"), static_cast<int>(IntervalUnit::Minutes));
+
+    layout->addWidget(ui->holdCheck, 3, 0);
+    layout->addWidget(ui->holdSpin, 3, 1);
+    layout->addWidget(ui->holdUnitCombo, 3, 2, 1, 2);
+
     ui->infiniteCheck = new QCheckBox(QStringLiteral("Run until stopped"), group);
     ui->limitSpin = new QSpinBox(group);
     ui->limitSpin->setRange(1, 1000000000);
 
-    layout->addWidget(ui->infiniteCheck, 3, 0, 1, 2);
-    layout->addWidget(fieldLabel(QStringLiteral("Limit"), group), 3, 2);
-    layout->addWidget(ui->limitSpin, 3, 3);
+    layout->addWidget(ui->infiniteCheck, 4, 0, 1, 2);
+    layout->addWidget(fieldLabel(QStringLiteral("Limit"), group), 4, 2);
+    layout->addWidget(ui->limitSpin, 4, 3);
 
     ui->randomizeCheck = new QCheckBox(QStringLiteral("Randomize"), group);
     ui->jitterSpin = new QSpinBox(group);
     ui->jitterSpin->setRange(1, 95);
     ui->jitterSpin->setSuffix(QStringLiteral("%"));
 
-    layout->addWidget(ui->randomizeCheck, 4, 0, 1, 2);
-    layout->addWidget(fieldLabel(QStringLiteral("Jitter"), group), 4, 2);
-    layout->addWidget(ui->jitterSpin, 4, 3);
+    layout->addWidget(ui->randomizeCheck, 5, 0, 1, 2);
+    layout->addWidget(fieldLabel(QStringLiteral("Jitter"), group), 5, 2);
+    layout->addWidget(ui->jitterSpin, 5, 3);
 
     return group;
 }
@@ -508,6 +521,12 @@ void MainWindow::connectProfileSignals(ProfileUi* ui)
         registerHotkeys();
     });
     connect(ui->clickTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
+    connect(ui->holdUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [ui]() {
+        ui->holdSpin->setMaximum(maximumIntervalValue(intervalUnitFromInt(comboValue(ui->holdUnitCombo))));
+    });
+    connect(ui->holdCheck, &QCheckBox::toggled, this, persist);
+    connect(ui->holdSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
+    connect(ui->holdUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, persist);
     connect(ui->infiniteCheck, &QCheckBox::toggled, this, persist);
     connect(ui->limitSpin, qOverload<int>(&QSpinBox::valueChanged), this, persist);
     connect(ui->randomizeCheck, &QCheckBox::toggled, this, persist);
@@ -580,6 +599,10 @@ void MainWindow::applyProfileToUi(ProfileUi* ui)
     setComboValue(ui->buttonCombo, static_cast<int>(ui->profile.settings.mouseButton));
     setComboValue(ui->clickTypeCombo, static_cast<int>(ui->profile.settings.clickType));
     ui->customKeyEdit->setText(ui->profile.settings.customKey);
+    ui->holdCheck->setChecked(ui->profile.settings.holdEnabled);
+    setComboValue(ui->holdUnitCombo, static_cast<int>(ui->profile.settings.holdUnit));
+    ui->holdSpin->setMaximum(maximumIntervalValue(ui->profile.settings.holdUnit));
+    ui->holdSpin->setValue(ui->profile.settings.holdValue);
     ui->infiniteCheck->setChecked(ui->profile.settings.infinite);
     ui->limitSpin->setValue(static_cast<int>(std::min<quint64>(ui->profile.settings.clickLimit, 1000000000ULL)));
     ui->randomizeCheck->setChecked(ui->profile.settings.randomizeInterval);
@@ -602,6 +625,9 @@ ClickSettings MainWindow::settingsFromUi(const ProfileUi* ui) const
     settings.positionMode = PositionMode::CurrentCursor;
     settings.fixedPosition = QPoint(0, 0);
     settings.customKey = ui->customKeyEdit->text().trimmed();
+    settings.holdEnabled = ui->holdCheck->isChecked();
+    settings.holdValue = ui->holdSpin->value();
+    settings.holdUnit = intervalUnitFromInt(comboValue(ui->holdUnitCombo));
     settings.infinite = ui->infiniteCheck->isChecked();
     settings.clickLimit = static_cast<quint64>(ui->limitSpin->value());
     settings.randomizeInterval = ui->randomizeCheck->isChecked();
@@ -654,6 +680,8 @@ void MainWindow::refreshSummary(ProfileUi* ui)
     ui->customKeyEdit->setEnabled(customKey);
     ui->customKeyEdit->setVisible(customKey);
     ui->buttonSummaryLabel->setText(buttonSummary(current));
+    ui->holdSpin->setEnabled(current.holdEnabled);
+    ui->holdUnitCombo->setEnabled(current.holdEnabled);
     ui->limitSpin->setEnabled(!current.infinite);
     ui->jitterSpin->setEnabled(current.randomizeInterval);
     updateTabText(ui);

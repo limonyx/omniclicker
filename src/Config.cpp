@@ -33,6 +33,9 @@ void loadClickingGroup(QSettings& settings, ClickSettings* result)
         settings.value(QStringLiteral("fixedX"), result->fixedPosition.x()).toInt(),
         settings.value(QStringLiteral("fixedY"), result->fixedPosition.y()).toInt());
     result->customKey = settings.value(QStringLiteral("customKey"), result->customKey).toString();
+    result->holdEnabled = settings.value(QStringLiteral("holdEnabled"), result->holdEnabled).toBool();
+    result->holdValue = settings.value(QStringLiteral("holdValue"), result->holdValue).toInt();
+    result->holdUnit = intervalUnitFromInt(settings.value(QStringLiteral("holdUnit"), static_cast<int>(result->holdUnit)).toInt());
     result->infinite = settings.value(QStringLiteral("infinite"), result->infinite).toBool();
     result->clickLimit = settings.value(QStringLiteral("clickLimit"), result->clickLimit).toULongLong();
     result->randomizeInterval = settings.value(QStringLiteral("randomizeInterval"), result->randomizeInterval).toBool();
@@ -49,6 +52,9 @@ void saveClickingGroup(QSettings& settings, const ClickSettings& value)
     settings.setValue(QStringLiteral("fixedX"), value.fixedPosition.x());
     settings.setValue(QStringLiteral("fixedY"), value.fixedPosition.y());
     settings.setValue(QStringLiteral("customKey"), value.customKey);
+    settings.setValue(QStringLiteral("holdEnabled"), value.holdEnabled);
+    settings.setValue(QStringLiteral("holdValue"), value.holdValue);
+    settings.setValue(QStringLiteral("holdUnit"), static_cast<int>(value.holdUnit));
     settings.setValue(QStringLiteral("infinite"), value.infinite);
     settings.setValue(QStringLiteral("clickLimit"), value.clickLimit);
     settings.setValue(QStringLiteral("randomizeInterval"), value.randomizeInterval);
