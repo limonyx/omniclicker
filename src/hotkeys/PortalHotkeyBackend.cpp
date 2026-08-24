@@ -52,6 +52,8 @@ QString keyNameForPortal(int key)
     }
 
     switch (key) {
+    case Qt::Key_ScrollLock:
+        return QStringLiteral("Scroll_Lock");
     case Qt::Key_Space:
         return QStringLiteral("space");
     case Qt::Key_Tab:
@@ -180,6 +182,12 @@ bool PortalHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const Q
     Q_UNUSED(activationId)
     qCInfo(lcPortalHotkey) << "[PORTAL DBUS LOG] PortalHotkeyBackend::start()";
     stop();
+    if (hotkey.key >= Qt::Key_F25 && hotkey.key <= Qt::Key_F35) {
+        if (error) {
+            *error = QStringLiteral("F25-F35 are only supported by the X11 hotkey backend.");
+        }
+        return false;
+    }
 
     qCInfo(lcPortalHotkey) << "Attempting portal backend initialization";
 

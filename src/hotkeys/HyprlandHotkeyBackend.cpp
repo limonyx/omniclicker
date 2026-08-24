@@ -38,6 +38,10 @@ QString toHyprlandModifiers(Qt::KeyboardModifiers modifiers)
 /// special keys like F1-F12, Return, etc. use their XKB names.
 QString toHyprlandKey(int key)
 {
+    if (key == Qt::Key_ScrollLock) {
+        return QStringLiteral("Scroll_Lock");
+    }
+
     QString keyName = QKeySequence(key).toString(QKeySequence::PortableText);
 
     // Single character keys should be lowercase for Hyprland.
@@ -95,6 +99,12 @@ QString HyprlandHotkeyBackend::name() const
 bool HyprlandHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
+    if (hotkey.key >= Qt::Key_F25 && hotkey.key <= Qt::Key_F35) {
+        if (error) {
+            *error = QStringLiteral("F25-F35 are only supported by the X11 hotkey backend.");
+        }
+        return false;
+    }
     callback_ = std::move(callback);
 
     const QString modStr = toHyprlandModifiers(hotkey.modifiers);

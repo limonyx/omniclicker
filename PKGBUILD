@@ -1,6 +1,6 @@
 # Maintainer: limonyx
 pkgname=omniclicker
-pkgver=1.1.4
+pkgver=1.1.5
 pkgrel=1
 pkgdesc='Native Linux autoclicker for X11 and Wayland-aware sessions'
 arch=('x86_64')

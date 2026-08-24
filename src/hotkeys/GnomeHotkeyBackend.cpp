@@ -45,6 +45,7 @@ QString toGtkShortcut(const Hotkey& hotkey)
     seq.replace(QStringLiteral("Shift+"), QStringLiteral("<Shift>"));
     seq.replace(QStringLiteral("Alt+"), QStringLiteral("<Alt>"));
     seq.replace(QStringLiteral("Meta+"), QStringLiteral("<Super>"));
+    seq.replace(QStringLiteral("ScrollLock"), QStringLiteral("Scroll_Lock"));
     return seq;
 }
 
@@ -87,6 +88,12 @@ QString GnomeHotkeyBackend::name() const
 bool GnomeHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
+    if (hotkey.key >= Qt::Key_F25 && hotkey.key <= Qt::Key_F35) {
+        if (error) {
+            *error = QStringLiteral("F25-F35 are only supported by the X11 hotkey backend.");
+        }
+        return false;
+    }
     callback_ = std::move(callback);
     customPath_ = shortcutPathForActivationId(activationId);
 

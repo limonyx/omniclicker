@@ -10,7 +10,7 @@ omniclicker aims to provide a simple, clean, and intuitive autoclicking experien
 
 Many Linux autoclickers only support X11 or require manual setup for specific Wayland compositors.
 
-OmniClicker is designed to work out of the box. It automatically uses the most appropriate backend for your desktop environment, providing native support for X11, KDE Plasma, GNOME, Sway, and Hyprland through desktop-specific integrations where available.
+omniclicker is designed to work out of the box. It automatically uses the most appropriate backend for your desktop environment, providing native support for X11, KDE Plasma, GNOME, Sway, and Hyprland through desktop-specific integrations where available.
 
 The goal is simple: install it, choose your settings, and start clicking.
 ## Features

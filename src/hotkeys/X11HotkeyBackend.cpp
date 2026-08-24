@@ -18,7 +18,7 @@ int grabErrorHandler(Display*, XErrorEvent* event)
 
 KeySym qtKeyToKeySym(int key)
 {
-    if (key >= Qt::Key_F1 && key <= Qt::Key_F24) {
+    if (key >= Qt::Key_F1 && key <= Qt::Key_F35) {
         return XK_F1 + key - Qt::Key_F1;
     }
     if (key >= Qt::Key_A && key <= Qt::Key_Z) {
@@ -29,6 +29,8 @@ KeySym qtKeyToKeySym(int key)
     }
 
     switch (key) {
+    case Qt::Key_ScrollLock:
+        return XK_Scroll_Lock;
     case Qt::Key_Space:
         return XK_space;
     case Qt::Key_Tab:

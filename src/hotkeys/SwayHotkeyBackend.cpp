@@ -28,7 +28,9 @@ QString toSwayKeybind(const Hotkey& hotkey)
         parts << QStringLiteral("Shift");
     }
 
-    QString keyName = QKeySequence(hotkey.key).toString(QKeySequence::PortableText);
+    QString keyName = hotkey.key == Qt::Key_ScrollLock
+        ? QStringLiteral("Scroll_Lock")
+        : QKeySequence(hotkey.key).toString(QKeySequence::PortableText);
 
     // Sway expects lowercase key names when Shift is a separate modifier.
     if (keyName.length() == 1) {
@@ -76,6 +78,12 @@ QString SwayHotkeyBackend::name() const
 bool SwayHotkeyBackend::start(const Hotkey& hotkey, Callback callback, const QString& activationId, QString* error)
 {
     stop();
+    if (hotkey.key >= Qt::Key_F25 && hotkey.key <= Qt::Key_F35) {
+        if (error) {
+            *error = QStringLiteral("F25-F35 are only supported by the X11 hotkey backend.");
+        }
+        return false;
+    }
     callback_ = std::move(callback);
 
     const QString bindStr = toSwayKeybind(hotkey);

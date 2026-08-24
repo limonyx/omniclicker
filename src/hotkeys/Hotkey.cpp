@@ -20,7 +20,7 @@ bool isModifierKey(int key)
 
 QString keyToString(int key)
 {
-    if (key >= Qt::Key_F1 && key <= Qt::Key_F24) {
+    if (key >= Qt::Key_F1 && key <= Qt::Key_F35) {
         return QStringLiteral("F%1").arg(key - Qt::Key_F1 + 1);
     }
 
@@ -33,6 +33,8 @@ QString keyToString(int key)
     }
 
     switch (key) {
+    case Qt::Key_ScrollLock:
+        return QStringLiteral("ScrollLock");
     case Qt::Key_Space:
         return QStringLiteral("Space");
     case Qt::Key_Tab:
@@ -101,7 +103,7 @@ std::optional<int> parseKeyToken(const QString& token, Qt::KeyboardModifiers* im
     if (upper.startsWith(QStringLiteral("F"))) {
         bool ok = false;
         const int number = upper.mid(1).toInt(&ok);
-        if (ok && number >= 1 && number <= 24) {
+        if (ok && number >= 1 && number <= 35) {
             return Qt::Key_F1 + number - 1;
         }
     }
@@ -178,6 +180,9 @@ std::optional<int> parseKeyToken(const QString& token, Qt::KeyboardModifiers* im
 
     if (upper == QStringLiteral("SPACE")) {
         return Qt::Key_Space;
+    }
+    if (upper == QStringLiteral("SCROLLLOCK") || upper == QStringLiteral("SCROLL_LOCK")) {
+        return Qt::Key_ScrollLock;
     }
     if (upper == QStringLiteral("TAB")) {
         return Qt::Key_Tab;
