@@ -52,6 +52,8 @@ QString keyNameForPortal(int key)
     }
 
     switch (key) {
+    case Qt::Key_CapsLock:
+        return QStringLiteral("Caps_Lock");
     case Qt::Key_ScrollLock:
         return QStringLiteral("Scroll_Lock");
     case Qt::Key_Space:

@@ -45,6 +45,7 @@ QString toGtkShortcut(const Hotkey& hotkey)
     seq.replace(QStringLiteral("Shift+"), QStringLiteral("<Shift>"));
     seq.replace(QStringLiteral("Alt+"), QStringLiteral("<Alt>"));
     seq.replace(QStringLiteral("Meta+"), QStringLiteral("<Super>"));
+    seq.replace(QStringLiteral("CapsLock"), QStringLiteral("Caps_Lock"));
     seq.replace(QStringLiteral("ScrollLock"), QStringLiteral("Scroll_Lock"));
     return seq;
 }

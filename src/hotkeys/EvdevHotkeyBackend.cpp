@@ -83,6 +83,8 @@ std::optional<unsigned short> qtKeyToEvdev(int key)
     }
 
     switch (key) {
+    case Qt::Key_CapsLock:
+        return KEY_CAPSLOCK;
     case Qt::Key_ScrollLock:
         return KEY_SCROLLLOCK;
     case Qt::Key_Space:

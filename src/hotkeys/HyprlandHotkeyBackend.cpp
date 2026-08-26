@@ -38,6 +38,9 @@ QString toHyprlandModifiers(Qt::KeyboardModifiers modifiers)
 /// special keys like F1-F12, Return, etc. use their XKB names.
 QString toHyprlandKey(int key)
 {
+    if (key == Qt::Key_CapsLock) {
+        return QStringLiteral("Caps_Lock");
+    }
     if (key == Qt::Key_ScrollLock) {
         return QStringLiteral("Scroll_Lock");
     }

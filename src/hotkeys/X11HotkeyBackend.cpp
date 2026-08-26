@@ -29,6 +29,8 @@ KeySym qtKeyToKeySym(int key)
     }
 
     switch (key) {
+    case Qt::Key_CapsLock:
+        return XK_Caps_Lock;
     case Qt::Key_ScrollLock:
         return XK_Scroll_Lock;
     case Qt::Key_Space:

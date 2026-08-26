@@ -103,6 +103,8 @@ std::optional<int> qtKeyToUInputCode(int key)
     }
 
     switch (key) {
+    case Qt::Key_CapsLock:
+        return KEY_CAPSLOCK;
     case Qt::Key_Space:
         return KEY_SPACE;
     case Qt::Key_Tab:

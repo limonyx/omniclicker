@@ -33,6 +33,8 @@ QString keyToString(int key)
     }
 
     switch (key) {
+    case Qt::Key_CapsLock:
+        return QStringLiteral("CapsLock");
     case Qt::Key_ScrollLock:
         return QStringLiteral("ScrollLock");
     case Qt::Key_Space:
@@ -180,6 +182,9 @@ std::optional<int> parseKeyToken(const QString& token, Qt::KeyboardModifiers* im
 
     if (upper == QStringLiteral("SPACE")) {
         return Qt::Key_Space;
+    }
+    if (upper == QStringLiteral("CAPSLOCK") || upper == QStringLiteral("CAPS_LOCK")) {
+        return Qt::Key_CapsLock;
     }
     if (upper == QStringLiteral("SCROLLLOCK") || upper == QStringLiteral("SCROLL_LOCK")) {
         return Qt::Key_ScrollLock;

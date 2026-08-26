@@ -28,9 +28,14 @@ QString toSwayKeybind(const Hotkey& hotkey)
         parts << QStringLiteral("Shift");
     }
 
-    QString keyName = hotkey.key == Qt::Key_ScrollLock
-        ? QStringLiteral("Scroll_Lock")
-        : QKeySequence(hotkey.key).toString(QKeySequence::PortableText);
+    QString keyName;
+    if (hotkey.key == Qt::Key_CapsLock) {
+        keyName = QStringLiteral("Caps_Lock");
+    } else if (hotkey.key == Qt::Key_ScrollLock) {
+        keyName = QStringLiteral("Scroll_Lock");
+    } else {
+        keyName = QKeySequence(hotkey.key).toString(QKeySequence::PortableText);
+    }
 
     // Sway expects lowercase key names when Shift is a separate modifier.
     if (keyName.length() == 1) {
