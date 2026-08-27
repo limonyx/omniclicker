@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="omniclicker-active-tray-icon.png">omniclicker-active-tray-icon.png</file>
+    </qresource>
+</RCC>

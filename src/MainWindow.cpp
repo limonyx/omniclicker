@@ -49,6 +49,18 @@
 namespace {
 
 constexpr int MaximumProfiles = 8;
+constexpr auto InactiveTrayIconName = "io.github.omniclicker";
+constexpr auto ActiveTrayIconName = "omniclicker-active-tray-icon";
+
+QIcon trayIcon(bool running)
+{
+    const QString iconName = QString::fromLatin1(running ? ActiveTrayIconName : InactiveTrayIconName);
+    QIcon icon = QIcon::fromTheme(iconName);
+    if (running && icon.isNull()) {
+        icon = QIcon(QStringLiteral(":/icons/omniclicker-active-tray-icon.png"));
+    }
+    return icon;
+}
 
 int maximumIntervalValue(IntervalUnit unit)
 {
@@ -916,7 +928,7 @@ void MainWindow::setRunningUi(ProfileUi* ui, bool running)
 
 void MainWindow::setupTray()
 {
-    trayIcon_ = new QSystemTrayIcon(QIcon::fromTheme(QStringLiteral("io.github.omniclicker")), this);
+    trayIcon_ = new QSystemTrayIcon(trayIcon(false), this);
     trayIcon_->setToolTip(QStringLiteral("Omni Clicker"));
 
     auto* menu = new QMenu(this);
@@ -971,6 +983,7 @@ void MainWindow::updateTrayState()
     trayIcon_->setToolTip(QStringLiteral("Omni Clicker - %1 active - %2 clicks")
                               .arg(runningCount)
                               .arg(totalClicks));
+    trayIcon_->setIcon(trayIcon(runningCount > 0));
 
     if (QMenu* menu = trayIcon_->contextMenu()) {
         const QList<QAction*> actions = menu->actions();
