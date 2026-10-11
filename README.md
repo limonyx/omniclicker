@@ -20,13 +20,15 @@ The goal is simple: install it, choose your settings, and start clicking.
 * Supports Wayland:
     * KDE Plasma
     * GNOME
-    * Sway
     * Hyprland
+    * Niri
+    * Sway
 * Configurable click interval and randomization(optional)
 * Left, right and scroll wheel mouse click support + custom keys 
 * Global shortcut/hotkey support
 * Run in background support
 * Multiple clicking profiles
+* Optional overlay when clicking
 * Hold click/key option
 * Clean and simple Qt6 interface
 * No Electron or web technologies
@@ -52,6 +54,7 @@ You need:
 * Qt 6
 * X11 libraries
 * libXtst
+* layer-shell-qt
 
 On **Debian / Ubuntu** based distributions:
 
@@ -112,4 +115,3 @@ If omniclicker doesn't work correctly on your desktop environment, please open a
 ## License
 
 omniclicker is licensed under the GNU General Public License v3.0 or later.
-

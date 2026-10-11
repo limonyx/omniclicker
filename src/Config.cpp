@@ -88,6 +88,7 @@ AppSettings AppConfig::loadAppSettings()
     settings.beginGroup(QStringLiteral("ui"));
     result.startMinimized = settings.value(QStringLiteral("startMinimized"), result.startMinimized).toBool();
     result.keepRunningInBackground = settings.value(QStringLiteral("keepRunningInBackground"), result.keepRunningInBackground).toBool();
+    result.showRunningOverlay = settings.value(QStringLiteral("showRunningOverlay"), result.showRunningOverlay).toBool();
     settings.endGroup();
 
     settings.beginGroup(QStringLiteral("profiles"));
@@ -157,6 +158,7 @@ bool AppConfig::saveAppSettings(const AppSettings& value, QString* error)
     settings.beginGroup(QStringLiteral("ui"));
     settings.setValue(QStringLiteral("startMinimized"), value.startMinimized);
     settings.setValue(QStringLiteral("keepRunningInBackground"), value.keepRunningInBackground);
+    settings.setValue(QStringLiteral("showRunningOverlay"), value.showRunningOverlay);
     settings.endGroup();
 
     settings.sync();

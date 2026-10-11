@@ -64,10 +64,12 @@ void ClickEngine::stop()
     }
 
     wake_.notify_all();
+    // Publish the stopped state before joining so GUI indicators can disappear
+    // immediately, even if an input backend is still unwinding its last click.
+    emit runningChanged(false);
     if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id()) {
         worker_.join();
     }
-    emit runningChanged(false);
 }
 
 void ClickEngine::toggle(ClickSettings settings)

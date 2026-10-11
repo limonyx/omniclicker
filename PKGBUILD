@@ -1,13 +1,13 @@
 # Maintainer: limonyx
 pkgname=omniclicker
-pkgver=1.1.7
+pkgver=1.2.0
 pkgrel=1
 pkgdesc='Native Linux autoclicker for X11 and Wayland-aware sessions'
 arch=('x86_64')
 url='https://github.com/limonyx/omniclicker'
 license=('GPL-3.0-or-later')
-depends=('hicolor-icon-theme' 'kglobalaccel' 'libx11' 'libxtst' 'qt6-base')
-makedepends=('cmake' 'ninja')
+depends=('hicolor-icon-theme' 'kglobalaccel' 'layer-shell-qt' 'libx11' 'libxtst' 'qt6-base')
+makedepends=('cmake' 'layer-shell-qt' 'ninja')
 install=omniclicker.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('4a1226e5ef92693d84f29b9c80e73ba1e6280890179d3711363de0a143967127')

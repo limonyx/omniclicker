@@ -4,6 +4,7 @@
 #include "hotkeys/EvdevHotkeyBackend.h"
 #include "hotkeys/GnomeHotkeyBackend.h"
 #include "hotkeys/HyprlandHotkeyBackend.h"
+#include "hotkeys/NiriHotkeyBackend.h"
 #include "hotkeys/PortalHotkeyBackend.h"
 #include "hotkeys/SwayHotkeyBackend.h"
 #include "hotkeys/X11HotkeyBackend.h"
@@ -97,6 +98,10 @@ std::vector<std::unique_ptr<HotkeyBackend>> createHotkeyBackendCandidates()
 #endif
             candidates.push_back(std::make_unique<PortalHotkeyBackend>());
             candidates.push_back(std::make_unique<X11HotkeyBackend>());
+            candidates.push_back(std::make_unique<EvdevHotkeyBackend>());
+        } else if (NiriHotkeyBackend::isNiriSession(desktop, qgetenv("NIRI_SOCKET"))) {
+            qCInfo(lcBackendFactory) << "Niri detected. Preferring managed Niri config hotkeys (no portal prompt).";
+            candidates.push_back(std::make_unique<NiriHotkeyBackend>());
             candidates.push_back(std::make_unique<EvdevHotkeyBackend>());
         } else if (isHyprland(desktop)) {
             qCInfo(lcBackendFactory) << "Hyprland detected. Preferring Hyprland IPC.";

@@ -23,6 +23,7 @@ class QTabBar;
 class QTabWidget;
 class QToolButton;
 class HotkeyCaptureEdit;
+class RunningOverlay;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -68,6 +69,7 @@ private:
         HotkeyCaptureEdit* hotkeyEdit = nullptr;
         QCheckBox* startMinimizedCheck = nullptr;
         QCheckBox* keepRunningInBackgroundCheck = nullptr;
+        QCheckBox* showRunningOverlayCheck = nullptr;
         QPushButton* applyHotkeyButton = nullptr;
         QPushButton* resetButton = nullptr;
         QPushButton* donateButton = nullptr;
@@ -97,6 +99,7 @@ private:
     void setRunningUi(ProfileUi* ui, bool running);
     void setupTray();
     void updateTrayState();
+    void updateRunningOverlay();
     void updateTabText(ProfileUi* ui);
     void updateAllTabTexts();
     void updateTabCloseButtons();
@@ -117,10 +120,12 @@ private:
     bool loading_ = false;
     bool startMinimized_ = false;
     bool keepRunningInBackground_ = false;
+    bool showRunningOverlay_ = false;
     int hoveredTabIndex_ = -1;
     int tabWidth_ = -1;
 
     QTabWidget* tabs_ = nullptr;
     QToolButton* addTabButton_ = nullptr;
     QSystemTrayIcon* trayIcon_ = nullptr;
+    RunningOverlay* runningOverlay_ = nullptr;
 };

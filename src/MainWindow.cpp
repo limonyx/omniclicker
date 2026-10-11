@@ -3,6 +3,7 @@
 #include "backends/InputBackend.h"
 #include "hotkeys/Hotkey.h"
 #include "hotkeys/HotkeyCaptureEdit.h"
+#include "RunningOverlay.h"
 
 #include <QAction>
 #include <QApplication>
@@ -150,6 +151,9 @@ MainWindow::MainWindow(QWidget* parent)
     const AppSettings appSettings = AppConfig::loadAppSettings();
     startMinimized_ = appSettings.startMinimized;
     keepRunningInBackground_ = appSettings.keepRunningInBackground;
+    showRunningOverlay_ = appSettings.showRunningOverlay;
+    runningOverlay_ = new RunningOverlay;
+    runningOverlay_->setOverlayEnabled(showRunningOverlay_);
 
     buildUi();
     setupTray();
@@ -195,6 +199,7 @@ MainWindow::~MainWindow()
         ui->engine->stop();
     }
     qDeleteAll(profiles_);
+    delete runningOverlay_;
 }
 
 bool MainWindow::shouldStartMinimized() const
@@ -227,8 +232,8 @@ void MainWindow::buildUi()
 {
     setWindowTitle(QStringLiteral("Omni Clicker"));
     setWindowIcon(QIcon::fromTheme(QStringLiteral("io.github.omniclicker")));
-    resize(760, 540);
-    setMinimumSize(680, 480);
+    resize(840, 600);
+    setMinimumSize(760, 540);
 
     auto* central = new QWidget(this);
     auto* root = new QVBoxLayout(central);
@@ -450,8 +455,15 @@ QGroupBox* MainWindow::createSettingsGroup(ProfileUi* ui)
     ui->keepRunningInBackgroundCheck = new QCheckBox(QStringLiteral("Keep running in background with tray icon"), group);
     ui->keepRunningInBackgroundCheck->setToolTip(QStringLiteral("When enabled, closing the window hides Omni Clicker to the tray instead of quitting."));
 
+    ui->showRunningOverlayCheck = new QCheckBox(QStringLiteral("Show overlay when clicking"), group);
+    ui->showRunningOverlayCheck->setToolTip(RunningOverlay::isPlatformSupported()
+        ? QStringLiteral("Show a click-through indicator while at least one profile is running. It is hidden when clicking stops. This preference applies to all profiles.")
+        : RunningOverlay::platformLimitation());
+    ui->showRunningOverlayCheck->setEnabled(RunningOverlay::isPlatformSupported());
+
     layout->addWidget(ui->startMinimizedCheck);
     layout->addWidget(ui->keepRunningInBackgroundCheck);
+    layout->addWidget(ui->showRunningOverlayCheck);
     return group;
 }
 
@@ -556,6 +568,14 @@ void MainWindow::connectProfileSignals(ProfileUi* ui)
             trayIcon_->setVisible(enabled);
         }
     });
+    connect(ui->showRunningOverlayCheck, &QCheckBox::toggled, this, [this, ui](bool enabled) {
+        showRunningOverlay_ = enabled;
+        if (runningOverlay_) {
+            runningOverlay_->setOverlayEnabled(enabled);
+        }
+        syncGlobalSettings(ui);
+        persistSettings();
+    });
     connect(ui->hotkeyEdit, &HotkeyCaptureEdit::recordingChanged, this, [this, ui](bool recording) {
         setFocusedShortcutsEnabled(!recording);
         if (recording) {
@@ -622,6 +642,7 @@ void MainWindow::applyProfileToUi(ProfileUi* ui)
     ui->hotkeyEdit->setText(ui->profile.settings.hotkey);
     ui->startMinimizedCheck->setChecked(startMinimized_);
     ui->keepRunningInBackgroundCheck->setChecked(keepRunningInBackground_);
+    ui->showRunningOverlayCheck->setChecked(showRunningOverlay_);
     if (trayIcon_) {
         trayIcon_->setVisible(keepRunningInBackground_);
     }
@@ -655,6 +676,7 @@ AppSettings MainWindow::appSettingsFromUi() const
     AppSettings result;
     result.startMinimized = startMinimized_;
     result.keepRunningInBackground = keepRunningInBackground_;
+    result.showRunningOverlay = showRunningOverlay_;
     for (ProfileUi* ui : profiles_) {
         ClickProfile profile = ui->profile;
         profile.settings = settingsFromUi(ui);
@@ -698,6 +720,17 @@ void MainWindow::refreshSummary(ProfileUi* ui)
     ui->jitterSpin->setEnabled(current.randomizeInterval);
     updateTabText(ui);
     updateTrayState();
+}
+
+void MainWindow::updateRunningOverlay()
+{
+    if (!runningOverlay_) {
+        return;
+    }
+    const bool anyRunning = std::any_of(profiles_.begin(), profiles_.end(), [](const ProfileUi* ui) {
+        return ui->engine && ui->engine->isRunning();
+    });
+    runningOverlay_->setClickingActive(anyRunning);
 }
 
 void MainWindow::refreshAllSummaries()
@@ -924,6 +957,7 @@ void MainWindow::setRunningUi(ProfileUi* ui, bool running)
     }
     statusBar()->showMessage(running ? QStringLiteral("Running") : QStringLiteral("Stopped"), 3000);
     updateTrayState();
+    updateRunningOverlay();
 }
 
 void MainWindow::setupTray()
@@ -1130,6 +1164,7 @@ void MainWindow::syncGlobalSettings(ProfileUi* source)
         }
         ui->startMinimizedCheck->setChecked(startMinimized_);
         ui->keepRunningInBackgroundCheck->setChecked(keepRunningInBackground_);
+        ui->showRunningOverlayCheck->setChecked(showRunningOverlay_);
     }
     loading_ = wasLoading;
 }

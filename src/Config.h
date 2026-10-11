@@ -15,6 +15,7 @@ struct AppSettings {
     QVector<ClickProfile> profiles;
     bool startMinimized = false;
     bool keepRunningInBackground = false;
+    bool showRunningOverlay = false;
 };
 
 class AppConfig {

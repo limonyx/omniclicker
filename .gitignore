@@ -25,3 +25,4 @@ packaging/
 ARCHITECTURE.md
 .flatpak-builder/
 pkg/
+tests/
