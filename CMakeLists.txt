@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(omniclicker
-    VERSION 1.2.0
+    VERSION 1.2.2
     DESCRIPTION "Native Linux autoclicker inspired by OP Auto Clicker"
     HOMEPAGE_URL "https://github.com/limonyx/omniclicker"
     LANGUAGES CXX)
