@@ -65,7 +65,7 @@ sudo apt install cmake build-essential qt6-base-dev libx11-dev libxtst-dev
 On **Arch**:
 
 ```bash
-sudo pacman -S cmake gcc qt6-base libx11 libxtst
+sudo pacman -S cmake gcc qt6-base libx11 libxtst layer-shell-qt
 ```
 
 Optional KDE Plasma support:
@@ -77,7 +77,13 @@ sudo pacman -S kglobalaccel
 On **Fedora**:
 
 ```bash
-sudo dnf install cmake gcc-c++ qt6-qtbase-devel libX11-devel libXtst-devel
+sudo dnf install cmake gcc-c++ qt6-qtbase-devel libX11-devel libXtst-devel layer-shell-qt
+```
+
+On **openSUSE**:
+
+```bash
+sudo zypper install cmake gcc-c++ libqt6-qtbase-devel libX11-devel libXtst-devel layer-shell-qt
 ```
 
 ### Build
