@@ -17,8 +17,10 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QInputDialog>
 #include <QKeySequence>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -246,6 +248,7 @@ void MainWindow::buildUi()
     tabs_->tabBar()->setElideMode(Qt::ElideRight);
     tabs_->tabBar()->setUsesScrollButtons(false);
     tabs_->tabBar()->setMouseTracking(true);
+    tabs_->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
     tabs_->tabBar()->installEventFilter(this);
     addTabButton_ = new QToolButton(tabs_->tabBar());
     addTabButton_->setText(QStringLiteral("+"));
@@ -265,6 +268,43 @@ void MainWindow::buildUi()
     });
     connect(tabs_->tabBar(), &QTabBar::tabMoved, this, [this]() {
         positionAddTabButton();
+    });
+    connect(tabs_->tabBar(), &QTabBar::customContextMenuRequested, this, [this](const QPoint& position) {
+        const int index = tabs_->tabBar()->tabAt(position);
+        if (index < 0) {
+            return;
+        }
+        QWidget* page = tabs_->widget(index);
+        ProfileUi* profile = nullptr;
+        for (ProfileUi* ui : profiles_) {
+            if (ui->page == page) {
+                profile = ui;
+                break;
+            }
+        }
+        if (!profile) {
+            return;
+        }
+
+        QMenu menu(this);
+        menu.setStyleSheet(QStringLiteral("QMenu { font-size: 11pt; padding: 2px; } QMenu::item { padding: 3px 16px; }"));
+        QAction* renameAction = menu.addAction(QStringLiteral("Rename"));
+        QAction* resetAction = menu.addAction(QStringLiteral("Auto"));
+        QAction* selected = menu.exec(tabs_->tabBar()->mapToGlobal(position));
+        if (selected == renameAction) {
+            bool accepted = false;
+            const QString name = QInputDialog::getText(this, QStringLiteral("Rename tab"),
+                QStringLiteral("Tab name:"), QLineEdit::Normal, profile->profile.name, &accepted).trimmed();
+            if (accepted && !name.isEmpty()) {
+                profile->profile.name = name;
+                persistSettings();
+                updateTabText(profile);
+            }
+        } else if (selected == resetAction) {
+            profile->profile.name.clear();
+            persistSettings();
+            updateTabText(profile);
+        }
     });
 
     setCentralWidget(central);
@@ -840,12 +880,27 @@ void MainWindow::resetToDefaults(ProfileUi* ui)
     }
 
     ui->profile = ClickProfile {};
+    const QList<QObject*> inputs = {
+        ui->enabledCheck, ui->intervalSpin, ui->intervalUnitCombo, ui->buttonCombo,
+        ui->clickTypeCombo, ui->customKeyEdit, ui->holdCheck, ui->holdSpin,
+        ui->holdUnitCombo, ui->infiniteCheck, ui->limitSpin, ui->randomizeCheck,
+        ui->jitterSpin, ui->hotkeyEdit
+    };
+    QVector<bool> previousSignalStates;
+    previousSignalStates.reserve(inputs.size());
+    for (QObject* input : inputs) {
+        previousSignalStates.append(input->blockSignals(true));
+    }
     loading_ = true;
     applyProfileToUi(ui);
     loading_ = false;
+    for (int i = 0; i < inputs.size(); ++i) {
+        inputs.at(i)->blockSignals(previousSignalStates.at(i));
+    }
     refreshSummary(ui);
     persistSettings();
     registerHotkeys();
+    updateRunningOverlay();
     ui->hotkeyEdit->clearFocus();
     setFocus(Qt::OtherFocusReason);
     statusBar()->showMessage(QStringLiteral("Tab reset to defaults."), 4000);
@@ -1035,6 +1090,14 @@ void MainWindow::updateTabText(ProfileUi* ui)
     }
 
     const ClickSettings settings = settingsFromUi(ui);
+    if (!ui->profile.name.isEmpty()) {
+        QString text = ui->profile.name;
+        if (!ui->profile.enabled) {
+            text.prepend(QStringLiteral("Off | "));
+        }
+        tabs_->setTabText(index, text);
+        return;
+    }
     const int addButtonWidth = profiles_.size() < MaximumProfiles ? addTabButton_->width() + 10 : 0;
     const int availableWidth = tabs_->tabBar()->width() - addButtonWidth;
     const int tabWidth = availableWidth / std::max(1, tabs_->count());
